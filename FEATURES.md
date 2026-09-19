@@ -53,7 +53,7 @@
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `id` | TEXT PK | UUID |
-| `canonical_key` | TEXT | 去重键 = hash(type + 归一化主体/谓词);调用方可显式提供 |
+| `canonical_key` | TEXT | 去重键 = hash(type + 归一化 content);调用方可显式提供。**唯一性按作用域路径 (user, project, session) 判定**:不同 project/session 的同文本不是重复(W1 实现时明确) |
 | `type` | TEXT | `fact \| preference \| event \| procedure`(v0.1 冻结四类) |
 | `content` | TEXT | 正文,检索引用的最小单元 |
 | `keywords` | TEXT(JSON 数组) | 实体/关键词标签,调用方或抽取器提供,FTS 加权用 |
@@ -66,7 +66,7 @@
 | `source_ref` | TEXT NULL | 出处描述(URL/文件/会话 id),引用溯源用 |
 | `supersedes` | TEXT NULL FK | 版本链:指向被本条替代的旧版本 |
 | `status` | TEXT | `active \| superseded \| deleted`,**不物理删**(v0.1) |
-| `idempotency_key` | TEXT UNIQUE | 调用方幂等键,可空 |
+| `idempotency_key` | TEXT UNIQUE | 调用方幂等键,可空。实现注记(W1):落在独立 `idempotency_keys` 映射表(key → memory_id + 首次 action),重试原样返回首次结果 |
 | `created_at / updated_at` | TEXT | ISO8601 |
 
 索引:`(scope_user, scope_project, scope_session, status)`、`(canonical_key, status)`。
