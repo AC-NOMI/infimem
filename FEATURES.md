@@ -161,6 +161,17 @@ MCP 的 tool schema(zod)本身就是"填表单"——**调用方 LLM 负责把�
 
 **D1|抽取:调用方填表,引擎不内置 LLM。** MCP 场景下调用方本来就有 LLM,tool schema 即表单;CLI 导入场景走 Extractor 接口,v0.1 默认规则版(按行、前缀标记分类),LLM 适配器可选。理由:零依赖、可离线、评测可复现;代价是抽取质量取决于调用方,用评测集的 ingest case 校验。
 
+D1 数据流(MCP 路径,引擎全程无 LLM 调用):
+
+```
+用户:"记住我部署用 pnpm"
+  └─ 客户端 LLM 生成 tool-call,按 remember 的 JSON Schema 填参
+     = 抽取发生在这里(模型 = 正在对话的那个)
+       └─ infimem 收到结构化参数:zod 校验 → 去重/冲突 → 事务入库
+search 同理:引擎内是纯确定性管线,引用编织进回答由客户端 LLM 完成
+引擎内唯一可能触到 LLM 的位置:可选的 Extractor LLM 适配器(CLI 导入用,默认关闭)
+```
+
 **D2|Embedding:默认 `hash` 提供方。** 字符 n-gram 特征哈希,384 维,确定性、零依赖、离线可用——诚实地说它语义泛化弱(接近词面匹配),所以 FTS 才是 v0.1 召回的主力、向量是补语义改写的副手,评测数字按 provider 分别如实报告。`openai` 适配器随 v0.1 提供(设 key 即用),本地 ONNX 小模型列为 v0.2。两实现共用 EmbeddingProvider 接口,换 provider 后 `compact --rebuild-index` 重建。
 
 ## 7. CLI
