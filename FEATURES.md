@@ -96,6 +96,8 @@
 
 MCP 的 tool schema(zod)本身就是"填表单"——**调用方 LLM 负责把自己的对话内容抽取为结构化字段**(章程"抽取只是填表"的落地方式);引擎默认不内置 LLM,详见 §4 决策 D1。
 
+接入侧契约(使用者视角见 USAGE.md):server **首跑自动建库**(默认 `~/.infimem/memory.db`,`INFIMEM_DB` 可改),并在 MCP initialize 响应的 `instructions` 字段返回使用指引(何时 remember / search / forget、scope 填法)——调用方 LLM 的行为引导由 server 分发,不依赖用户手改 CLAUDE.md;4 个工具的 description 内嵌最小参数范例。
+
 ### 3.1 remember
 
 | 参数 | 必填 | 说明 |
