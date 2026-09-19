@@ -150,7 +150,7 @@ MCP 的 tool schema(zod)本身就是"填表单"——**调用方 LLM 负责把�
 
 | 阶段 | 做法 | 可替换点 |
 |---|---|---|
-| 1. 召回 | FTS5 BM25 Top-50 ∪ sqlite-vec KNN Top-50;均先按 scope + status + sensitivity 过滤 | 召回器接口 |
+| 1. 召回 | FTS5 BM25 Top-50 ∪ sqlite-vec KNN Top-150;均按 scope + status + sensitivity 过滤。**实现注记(W2)**:向量度量显式用余弦(vec0 默认 L2),并设 `maxDistance` 截断(默认 0.95,hash 向量下不相关文本 ≈ 1.0)——小语料下"查不到"因此成立;换 API embedding provider 时可放宽 | 召回器接口 |
 | 2. 融合 | RRF(k=60):`score = Σ 1/(60+rank)` | 融合器接口 |
 | 3. 重排 | Reranker 接口;v0.1 默认 Identity(即 RRF 序) | v0.2:本地关键词 rerank / API rerank |
 | 4. 组装 | 截断 Top-K,附引用与各阶段分数、耗时 | — |
