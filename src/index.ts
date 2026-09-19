@@ -1,7 +1,15 @@
 export { openDb, type Db } from './db/connection.js';
 export { remember, type RememberResult, type RememberAction } from './ingest/ingest.js';
+export { search, searchInputSchema } from './retrieval/search.js';
+export type { SearchInput } from './retrieval/search.js';
+export type { ScoredResult, SearchTrace, SearchOutput } from './retrieval/types.js';
+export { IdentityReranker, type Reranker } from './retrieval/rerank.js';
+export { forget, type ForgetResult } from './governance/forget.js';
+export { compact, type CompactOptions, type CompactReport } from './governance/compact.js';
+export { createInfimemServer, SERVER_INSTRUCTIONS } from './mcp/server.js';
 export { HashEmbeddingProvider, HASH_EMBEDDING_DIM } from './embeddings/hash.js';
 export type { EmbeddingProvider } from './embeddings/types.js';
 export { rememberInputSchema, MEMORY_TYPES, SENSITIVITY_LEVELS, WRITE_SOURCES } from './schema/memory.js';
-export type { RememberInput, MemoryType, Sensitivity, WriteSource } from './schema/memory.js';
+export type { RememberInput, Scope, MemoryType, Sensitivity, WriteSource } from './schema/memory.js';
+export { rowToMemory, type MemoryRecord } from './schema/row.js';
 export { InfimemError, ValidationError, NotFoundError } from './errors.js';

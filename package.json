@@ -21,6 +21,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^12.11.1",
     "sqlite-vec": "^0.1.6",
     "zod": "^4.0.0"
