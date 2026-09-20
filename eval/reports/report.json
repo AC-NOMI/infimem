@@ -1,0 +1,562 @@
+{
+  "suite": "v1",
+  "provider": "hash",
+  "cases": 30,
+  "recallAt1": 0.8111111111111111,
+  "recallAt5": 0.9,
+  "recallAt10": 0.9,
+  "mrr": 0.9,
+  "citationPrecision": 1,
+  "faithfulness": 0.9166666666666666,
+  "p95LatencyMs": 0,
+  "sensitivityLeaks": 0,
+  "perCase": [
+    {
+      "caseId": "e1",
+      "category": "entity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": 1,
+      "sensitivityLeak": false,
+      "latencyMs": 0.8191249999999997,
+      "returnedRefs": [
+        "c1"
+      ],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "e2",
+      "category": "entity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.1957919999999973,
+      "returnedRefs": [
+        "c1"
+      ],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "e3",
+      "category": "entity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.2915830000000028,
+      "returnedRefs": [
+        "c1"
+      ],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "e4",
+      "category": "entity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": 1,
+      "sensitivityLeak": false,
+      "latencyMs": 0.18912499999999,
+      "returnedRefs": [
+        "c1"
+      ],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "e5",
+      "category": "entity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.23612500000000125,
+      "returnedRefs": [
+        "c1"
+      ],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "p1",
+      "category": "paraphrase",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.1787920000000014,
+      "returnedRefs": [
+        "c1"
+      ],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "p2",
+      "category": "paraphrase",
+      "recallAt1": 0,
+      "recallAt5": 0,
+      "recallAt10": 0,
+      "mrr": 0,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.12933300000000258,
+      "returnedRefs": [],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "p3",
+      "category": "paraphrase",
+      "recallAt1": 0,
+      "recallAt5": 0,
+      "recallAt10": 0,
+      "mrr": 0,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.21970900000000881,
+      "returnedRefs": [],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "p4",
+      "category": "paraphrase",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.33591600000001165,
+      "returnedRefs": [
+        "c1"
+      ],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "p5",
+      "category": "paraphrase",
+      "recallAt1": 0,
+      "recallAt5": 0,
+      "recallAt10": 0,
+      "mrr": 0,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.15800000000000125,
+      "returnedRefs": [],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "t1",
+      "category": "temporal",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.18770800000000065,
+      "returnedRefs": [
+        "v2"
+      ],
+      "expectedRefs": [
+        "v2"
+      ]
+    },
+    {
+      "caseId": "t2",
+      "category": "temporal",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": 0.75,
+      "sensitivityLeak": false,
+      "latencyMs": 0.2360840000000053,
+      "returnedRefs": [
+        "v2"
+      ],
+      "expectedRefs": [
+        "v2"
+      ]
+    },
+    {
+      "caseId": "t3",
+      "category": "temporal",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.16799999999999216,
+      "returnedRefs": [
+        "v2"
+      ],
+      "expectedRefs": [
+        "v2"
+      ]
+    },
+    {
+      "caseId": "t4",
+      "category": "temporal",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.17104199999999992,
+      "returnedRefs": [
+        "v3"
+      ],
+      "expectedRefs": [
+        "v3"
+      ]
+    },
+    {
+      "caseId": "t5",
+      "category": "temporal",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.1474580000000003,
+      "returnedRefs": [
+        "v2"
+      ],
+      "expectedRefs": [
+        "v2"
+      ]
+    },
+    {
+      "caseId": "s1",
+      "category": "scope",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.2143339999999938,
+      "returnedRefs": [
+        "a1"
+      ],
+      "expectedRefs": [
+        "a1"
+      ]
+    },
+    {
+      "caseId": "s2",
+      "category": "scope",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.18837500000000773,
+      "returnedRefs": [
+        "u1"
+      ],
+      "expectedRefs": [
+        "u1"
+      ]
+    },
+    {
+      "caseId": "s3",
+      "category": "scope",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.15387499999999932,
+      "returnedRefs": [
+        "bp"
+      ],
+      "expectedRefs": [
+        "bp"
+      ]
+    },
+    {
+      "caseId": "s4",
+      "category": "scope",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.21741600000000005,
+      "returnedRefs": [
+        "c1"
+      ],
+      "expectedRefs": [
+        "c1"
+      ]
+    },
+    {
+      "caseId": "s5",
+      "category": "scope",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.1375420000000247,
+      "returnedRefs": [
+        "u1"
+      ],
+      "expectedRefs": [
+        "u1"
+      ]
+    },
+    {
+      "caseId": "x1",
+      "category": "sensitivity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.1371249999999975,
+      "returnedRefs": [
+        "safe"
+      ],
+      "expectedRefs": [
+        "safe"
+      ]
+    },
+    {
+      "caseId": "x2",
+      "category": "sensitivity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.11908299999998917,
+      "returnedRefs": [
+        "safe"
+      ],
+      "expectedRefs": [
+        "safe"
+      ]
+    },
+    {
+      "caseId": "x3",
+      "category": "sensitivity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.11816699999999969,
+      "returnedRefs": [
+        "safe"
+      ],
+      "expectedRefs": [
+        "safe"
+      ]
+    },
+    {
+      "caseId": "x4",
+      "category": "sensitivity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.1214999999999975,
+      "returnedRefs": [
+        "safe"
+      ],
+      "expectedRefs": [
+        "safe"
+      ]
+    },
+    {
+      "caseId": "x5",
+      "category": "sensitivity",
+      "recallAt1": 1,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.11899999999999977,
+      "returnedRefs": [
+        "sec"
+      ],
+      "expectedRefs": [
+        "sec"
+      ]
+    },
+    {
+      "caseId": "f1",
+      "category": "conflict",
+      "recallAt1": 0.5,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.14145899999999756,
+      "returnedRefs": [
+        "a",
+        "b"
+      ],
+      "expectedRefs": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "caseId": "f2",
+      "category": "conflict",
+      "recallAt1": 0.3333333333333333,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.18708300000000122,
+      "returnedRefs": [
+        "a",
+        "b",
+        "c"
+      ],
+      "expectedRefs": [
+        "a",
+        "b",
+        "c"
+      ]
+    },
+    {
+      "caseId": "f3",
+      "category": "conflict",
+      "recallAt1": 0.5,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.15016700000001038,
+      "returnedRefs": [
+        "a",
+        "b"
+      ],
+      "expectedRefs": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "caseId": "f4",
+      "category": "conflict",
+      "recallAt1": 0.5,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.16329100000001517,
+      "returnedRefs": [
+        "a",
+        "b"
+      ],
+      "expectedRefs": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "caseId": "f5",
+      "category": "conflict",
+      "recallAt1": 0.5,
+      "recallAt5": 1,
+      "recallAt10": 1,
+      "mrr": 1,
+      "citationPrecision": 1,
+      "faithfulness": null,
+      "sensitivityLeak": false,
+      "latencyMs": 0.19591700000000856,
+      "returnedRefs": [
+        "v2",
+        "v3"
+      ],
+      "expectedRefs": [
+        "v2",
+        "v3"
+      ]
+    }
+  ],
+  "generatedAt": "2026-09-20T04:48:18.708Z"
+}

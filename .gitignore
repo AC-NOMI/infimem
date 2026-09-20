@@ -17,6 +17,9 @@ dist/
 *.sqlite
 *.sqlite3
 
+# Eval run outputs (baseline + release reports are tracked)
+eval/reports/latest/
+
 # OS / editor
 .DS_Store
 .idea/

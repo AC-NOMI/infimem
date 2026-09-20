@@ -9,6 +9,13 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "infimem": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -18,11 +25,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval": "node dist/cli/index.js eval --suite eval/suites/v1.jsonl --name v1 --report eval/reports/latest",
+    "eval:baseline": "node dist/cli/index.js eval --suite eval/suites/v1.jsonl --name v1 --report eval/reports && node -e \"require('fs').copyFileSync('eval/reports/report.json','eval/reports/baseline.json')\"",
+    "eval:regress": "node dist/cli/index.js eval --suite eval/suites/v1.jsonl --name v1 --baseline eval/reports/baseline.json --fail-on-regression",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^12.11.1",
+    "commander": "^15.0.0",
     "sqlite-vec": "^0.1.6",
     "zod": "^4.0.0"
   },

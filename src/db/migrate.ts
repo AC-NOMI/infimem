@@ -1,12 +1,16 @@
 import type Database from 'better-sqlite3';
+import { InfimemError } from '../errors.js';
 
 /**
- * 迁移按序号排列,PRAGMA user_version 记录已应用到的版本。
+ * 迁移按序号推进,PRAGMA user_version 记录已应用版本。
  * 新增迁移只能追加,不能修改历史条目。
+ * v0.1 尚未发布,001 保持可编辑;发布后冻结。
  */
 
 // 001 — 初始 schema:正文表 + 可重建的派生索引(FTS/向量)+ 治理表
-const M001_INITIAL = `
+// 维度在建库时确定并写入 infimem_meta;vec0 表无法 ALTER 维度,v0.1 每库绑定一个 provider 维度
+function m001(dim: number): string {
+  return `
 CREATE TABLE memories (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK (type IN ('fact', 'preference', 'event', 'procedure')),
@@ -52,7 +56,7 @@ END;
 -- sqlite-vec 0.1.9 的显式 rowid 插入路径有 bug:一律走 metadata 列 memory_rowid 回链 memories.rowid
 -- 距离度量显式用余弦(vec0 默认是 L2):maxDistance 截断与"不相关 ≈ 1.0"的语义都按余弦设计
 CREATE VIRTUAL TABLE memories_vec USING vec0(
-  embedding float[384] distance_metric=cosine,
+  embedding float[${dim}] distance_metric=cosine,
   memory_rowid integer metadata
 );
 
@@ -78,14 +82,32 @@ CREATE TABLE idempotency_keys (
   action TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE infimem_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
+}
 
-const MIGRATIONS: readonly string[] = [M001_INITIAL];
+export const DEFAULT_DIM = 384;
 
-export function migrate(db: Database.Database): void {
+export function migrate(db: Database.Database, dim: number = DEFAULT_DIM): void {
   const current = db.pragma('user_version', { simple: true }) as number;
-  for (let v = current; v < MIGRATIONS.length; v++) {
-    db.exec(MIGRATIONS[v]!);
-    db.pragma(`user_version = ${v + 1}`);
+  if (current === 0) {
+    db.exec(m001(dim));
+    db.prepare("INSERT INTO infimem_meta (key, value) VALUES ('dimension', ?)").run(String(dim));
+    db.pragma('user_version = 1');
+    return;
+  }
+  // 已存在的库:维度必须与请求一致(v0.1 不做跨维度重建)
+  const stored = db.prepare("SELECT value FROM infimem_meta WHERE key = 'dimension'").get() as
+    | { value: string }
+    | undefined;
+  if (stored && Number(stored.value) !== dim) {
+    throw new InfimemError(
+      `embedding dimension mismatch: database was created with dim=${stored.value}, requested dim=${dim}. ` +
+        'v0.1 keeps one database file per provider; create a new database or reopen with the matching provider.',
+    );
   }
 }

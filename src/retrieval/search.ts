@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Db } from '../db/connection.js';
+import { getDbDim } from '../db/meta.js';
 import type { EmbeddingProvider } from '../embeddings/types.js';
 import { MEMORY_TYPES, SENSITIVITY_LEVELS, scopeSchema, type Scope } from '../schema/memory.js';
 import { MEMORY_COLUMNS, rowToMemory, type MemoryRecord } from '../schema/row.js';
@@ -70,9 +71,10 @@ export async function search(
 
   // 阶段 1b:向量 KNN 召回(超量取回后置过滤,规模问题留给 v0.3)
   let vecCandidates = 0;
-  if (provider.dim !== 384) {
+  const dbDim = getDbDim(db);
+  if (provider.dim !== dbDim) {
     throw new ValidationError(
-      `embedding dimension mismatch: provider dim ${provider.dim} != index dim 384 (run compact --rebuild-index after switching providers)`,
+      `embedding dimension mismatch: provider dim ${provider.dim} != database dim ${dbDim} (v0.1 keeps one database per provider)`,
     );
   }
   const queryVec = await provider.embed(value.query);

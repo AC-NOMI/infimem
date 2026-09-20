@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb } from '../../src/db/connection.js';
+import { getDbDim } from '../../src/db/meta.js';
 import { makeDb } from '../helpers.js';
 
 describe('openDb + migrate', () => {
@@ -64,5 +65,17 @@ describe('openDb + migrate', () => {
     expect(row.memory_rowid).toBe(42);
     expect(row.l).toBe(384);
     db.close();
+  });
+
+  it('binds the vector dimension at creation and rejects mismatched reopen', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'infimem-dim-'));
+    const file = join(dir, 'dim.db');
+    const a = openDb(file, { dim: 8 });
+    expect(getDbDim(a)).toBe(8);
+    a.close();
+    expect(() => openDb(file, { dim: 1536 })).toThrow(/dimension mismatch/);
+    const b = openDb(file, { dim: 8 });
+    expect(getDbDim(b)).toBe(8);
+    b.close();
   });
 });
