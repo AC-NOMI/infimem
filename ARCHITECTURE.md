@@ -54,7 +54,94 @@ SQLite 单文件(WAL)
 | `embeddings/hash.ts` | 默认 provider | 词元+CJK 二元组 → fnv1a 特征哈希 → L2 归一化,384 维,确定性 |
 | `mcp/server.ts` | 4 工具 + instructions | 工具 shape 宽松,**校验权统一在引擎 zod** |
 
-## 3. 三条数据流(对着代码讲)
+## 3. 四条数据流(对着代码讲)
+
+总览图(四个工具的逻辑与数据落点):
+
+```mermaid
+flowchart TB
+  subgraph RG["remember · 写入管线"]
+    R0["调用方 LLM 按 tool schema 填参 · D1"] --> R1{"zod 校验"}
+    R1 -- 拒绝 --> RX["ValidationError"]
+    R1 -- 通过 --> R2["事务外 embed"]
+    R2 -- 失败 --> R3["vector=null · vec_pending 降级"]
+    R2 -- 成功 --> T1["事务开始"]
+    R1 -- 通过 --> T1
+    T1 --> R4{"幂等键已存在?"}
+    R4 -- 是 --> RY["原样返回首次结果"]
+    R4 -- 否 --> R5{"同 key + 同内容 + 同作用域?"}
+    R5 -- 是 --> RZ["duplicate · no-op"]
+    R5 -- 否 --> R6{"声明 supersedes?"}
+    R6 -- 是 --> R7{"目标存在且 active?"}
+    R7 -- 否 --> RX2["NotFound / ValidationError"]
+    R7 -- 是 --> R8["旧版本置 superseded"]
+    R6 -- 否 --> R9{"同 key 其他活跃版本?"}
+    R8 --> R9
+    R9 -- 有 --> R10["记 conflicts · action=conflict"]
+    R9 -- 无 --> R11["action=created"]
+    R10 --> R12["INSERT memories"]
+    R11 --> R12
+    R3 --> R12
+    R12 --> R13["vector? 写 memories_vec : vec_pending=1"]
+    R13 --> R14["审计 + 幂等映射"]
+    R14 --> R15["提交 · 返回 id + action"]
+  end
+
+  subgraph SG["search · 检索管线"]
+    S0["query"] --> S1{"zod 校验"}
+    S1 --> S2["sanitize:词元化+引号前缀+OR"]
+    S1 --> S3["embed query"]
+    S2 --> S4["FTS5 BM25 Top-50 · SQL 内过滤"]
+    S3 --> S5["vec0 KNN Top-150 cosine · maxDistance 截断 · 回表后置过滤"]
+    S4 --> S6["RRF k=60 融合 · 双路累加"]
+    S5 --> S6
+    S6 --> S7["Reranker 钩子 · 默认 Identity"]
+    S7 --> S8["Top-K + 引用 + scores + trace"]
+  end
+
+  subgraph FG["forget · 遗忘"]
+    F0["id 或 canonicalKey+scope"] --> F1["定位活跃记忆 · 无则 NotFound"]
+    F1 --> F2["status=deleted · tombstone"]
+    F2 --> F3["FTS 显式删行"]
+    F3 --> F4["按 metadata 删向量"]
+    F4 --> F5["审计 forget"]
+  end
+
+  subgraph CG["compact · 整理"]
+    C0{"rebuildIndex?"}
+    C0 -- 否 --> C1["报告:记忆/冲突/链深/vec_pending"]
+    C0 -- 是 --> C2["事务外批量重算 embedding"]
+    C2 --> C3["FTS rebuild + 清空重灌 vec + 清 vec_pending"]
+    C3 --> C1
+    C1 --> C4["审计 compact"]
+  end
+
+  subgraph DBG["SQLite 单文件"]
+    M[("memories · 唯一事实源")]
+    F[("memories_fts · 派生")]
+    V[("memories_vec · 派生 cosine")]
+    C[("conflicts")]
+    A[("audit_events")]
+    I[("idempotency_keys")]
+  end
+
+  R12 --> M
+  R13 --> V
+  R10 --> C
+  R14 --> A
+  R14 --> I
+  R4 -. 读 .-> I
+  R5 -. 读 .-> M
+  S4 -. 读 .-> F
+  S5 -. 读 .-> V
+  F2 --> M
+  F3 -. 写 .-> F
+  F4 -. 写 .-> V
+  F5 --> A
+  C3 -. 重建 .-> F
+  C3 -. 重建 .-> V
+  C4 --> A
+```
 
 ### 3.1 写入:`remember(db, provider, input)` — ingest/ingest.ts
 
