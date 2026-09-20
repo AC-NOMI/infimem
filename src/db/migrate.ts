@@ -50,8 +50,9 @@ CREATE TRIGGER memories_fts_au AFTER UPDATE ON memories BEGIN
 END;
 
 -- sqlite-vec 0.1.9 的显式 rowid 插入路径有 bug:一律走 metadata 列 memory_rowid 回链 memories.rowid
+-- 距离度量显式用余弦(vec0 默认是 L2):maxDistance 截断与"不相关 ≈ 1.0"的语义都按余弦设计
 CREATE VIRTUAL TABLE memories_vec USING vec0(
-  embedding float[384],
+  embedding float[384] distance_metric=cosine,
   memory_rowid integer metadata
 );
 
