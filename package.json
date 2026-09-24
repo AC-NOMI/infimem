@@ -29,6 +29,7 @@
     "eval": "node dist/cli/index.js eval --suite eval/suites/v1.jsonl --name v1 --report eval/reports/latest",
     "eval:baseline": "node dist/cli/index.js eval --suite eval/suites/v1.jsonl --name v1 --report eval/reports && node -e \"require('fs').copyFileSync('eval/reports/report.json','eval/reports/baseline.json')\"",
     "eval:regress": "node dist/cli/index.js eval --suite eval/suites/v1.jsonl --name v1 --baseline eval/reports/baseline.json --fail-on-regression",
+    "audit": ".githooks/pre-push --all",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

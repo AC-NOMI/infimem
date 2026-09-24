@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# pre-push 敏感信息门禁:扫描待推送的提交,命中即拒绝推送。
+# 用法:
+#   由 git 自动调用(stdin: local_ref local_sha remote_ref remote_sha)
+#   .githooks/pre-push --all      # 手动全量审计(等价于开放仓库前的检查)
+# 逃生口:INFIMEM_SKIP_SENSITIVE_CHECK=1 git push ...  (紧急情况,用后必查)
+set -u
+
+# 高置信度秘密模式 + 个人信息(本机路径/用户名)
+PATTERN='(sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|Bearer [A-Za-z0-9._-]{20,}|(api[_-]?key|secret|token|password|passwd)"?[ '"'"']*[:=]"?[ '"'"']*[A-Za-z0-9/+_-]{16,}|/Users/[a-z0-9_.-]+|yimingzhang)'
+# 永不允许进入仓库的文件名:内部章程 / 数据库 / 环境变量 / 导出转储
+FORBIDDEN_FILES='^(POSITIONING\.md$|.*\.(db|sqlite|sqlite3)$|.*(^|/)\.env(\..+)?$|.*dump[^/]*\.jsonl$)'
+
+hits=0
+
+scan_range() {
+  local range="$1" label="$2"
+  [ -z "$range" ] && return 0
+
+  local bad_files
+  bad_files=$(git diff-tree --no-commit-id --name-only -r --root $range 2>/dev/null \
+    | sort -u | grep -E "$FORBIDDEN_FILES" || true)
+  if [ -n "$bad_files" ]; then
+    echo "✖ [$label] 敏感文件进入推送范围:" >&2
+    echo "$bad_files" | sed 's/^/      /' >&2
+    hits=1
+  fi
+
+  local commits found
+  commits=$(git rev-list $range 2>/dev/null)
+  [ -z "$commits" ] && return 0
+  found=$(git grep -I -inE "$PATTERN" $commits -- 2>/dev/null | sort -u || true)
+  if [ -n "$found" ]; then
+    echo "✖ [$label] 疑似敏感内容(前 20 条):" >&2
+    echo "$found" | head -20 | sed 's/^/      /' >&2
+    hits=1
+  fi
+}
+
+if [ "${1:-}" = "--all" ]; then
+  echo "审计全部历史..."
+  scan_range "--all" "全量审计"
+elif [ "${1:-}" = "-" ] || [ $# -eq 0 ]; then
+  while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -n "${DEBUG_HOOK:-}" ] && echo "hook stdin: $local_ref $local_sha $remote_ref $remote_sha" >&2
+    if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+      continue # 删除远端分支,无可扫描内容
+    fi
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+      scan_range "$local_sha" "$local_ref (新分支/全量)"
+    else
+      scan_range "$remote_sha..$local_sha" "$local_ref"
+    fi
+  done
+else
+  echo "用法:pre-push [--all]  (git 会通过 stdin 自动传参)" >&2
+  exit 2
+fi
+
+if [ "$hits" -ne 0 ]; then
+  echo "" >&2
+  echo "推送被拒绝:检测到疑似敏感信息。请清理后重试;" >&2
+  echo "若为误报,把该模式加入本脚本的排除列表,或用 INFIMEM_SKIP_SENSITIVE_CHECK=1 强推(事后必须复核)。" >&2
+  exit 1
+fi
+
+echo "✔ 敏感信息检查通过"
+exit 0

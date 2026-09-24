@@ -92,6 +92,16 @@ flowchart LR
 - 向量召回无预过滤,超量取回后置过滤,百万级以下够用
 - 导入是"重新摄取"而非字节级恢复(备份 = 复制 .db 文件)
 
+## 本地开发
+
+```bash
+npm ci && npm run build && npm test   # 类型检查、构建、83 个测试
+git config core.hooksPath .githooks   # 启用 pre-push 敏感信息门禁(克隆后执行一次)
+npm run audit                         # 手动全量审计:扫描全部历史中的秘密/个人信息
+```
+
+pre-push 钩子会扫描待推送提交的文件名与内容(密钥/token/私钥块/本机路径等),命中即拒绝推送。
+
 ## License
 
 MIT
