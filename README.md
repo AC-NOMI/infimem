@@ -2,7 +2,7 @@
 
 **为 AI Agent 提供的"可治理、可评测"长期记忆引擎。** SQLite 单文件部署,MCP 协议接入,检索管线透明可替换,评测数字随代码公开。
 
-> 状态:v0.1(引擎核心 + MCP + CLI + 评测套件)。设计章程见 [POSITIONING.md](./POSITIONING.md)。
+> 状态:v0.1(引擎核心 + MCP + CLI + 评测套件)。
 
 ```bash
 claude mcp add infimem -- npx -y infimem@latest mcp

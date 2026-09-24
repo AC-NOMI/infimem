@@ -17,6 +17,9 @@ dist/
 *.sqlite
 *.sqlite3
 
+# Internal positioning charter stays local, never published
+POSITIONING.md
+
 # Eval run outputs (baseline + release reports are tracked)
 eval/reports/latest/
 
