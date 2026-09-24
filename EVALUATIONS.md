@@ -51,6 +51,8 @@ Case 文件:`eval/suites/v1.jsonl`;基线:`eval/reports/baseline.json`(随影响
 
 (Recall@1 < Recall@5 是设计使然:conflict 类 case 的期望是 2-3 个并存版本,Recall@1 只计第一名。)
 
+**跨平台复现证据**:v0.1.0 的首次 CI 运行(ubuntu-latest, x64)与本地基线(macOS, arm64)全部指标逐位一致,低于满分的三条 case(p2/p3/p5)也完全相同——确定性管线跨平台可复现是本项目的验收标准之一,此后每次 CI 都在对这条性质做持续校验。
+
 ## 5. 诚实声明与计划
 
 - 默认 hash embedding 是词面级:paraphrase 类 2/5 是它的真实水平,不是 bug。这是 ADR-002/003 决策(零依赖、可复现)的**已定价代价**;v0.2 引入本地 ONNX provider 后,同一套 case 的对比数字就是升级依据。
