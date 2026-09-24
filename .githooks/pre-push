@@ -29,7 +29,8 @@ scan_range() {
   local commits found
   commits=$(git rev-list $range 2>/dev/null)
   [ -z "$commits" ] && return 0
-  found=$(git grep -I -inE "$PATTERN" $commits -- 2>/dev/null | sort -u || true)
+  # 排除钩子自身:模式清单就写在里面,内容扫描必自命中;文件名规则对它仍然生效
+  found=$(git grep -I -inE "$PATTERN" $commits -- . ':(exclude).githooks/pre-push' 2>/dev/null | sort -u || true)
   if [ -n "$found" ]; then
     echo "✖ [$label] 疑似敏感内容(前 20 条):" >&2
     echo "$found" | head -20 | sed 's/^/      /' >&2
