@@ -20,6 +20,9 @@ dist/
 # Internal positioning charter stays local, never published
 POSITIONING.md
 
+# Internal competition plan stays local
+COMPETITION.md
+
 # Eval run outputs (baseline + release reports are tracked)
 eval/reports/latest/
 
