@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>infimem 架构可视化 — 数据流转</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0b1020; color: #dbe4ff; font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; padding: 20px 24px 40px; }
+  h1 { font-size: 22px; margin-bottom: 2px; }
+  h1 span { color: #6ea8ff; }
+  .sub { color: #8fa3c8; font-size: 13px; margin-bottom: 14px; }
+  .sub a { color: #6ea8ff; text-decoration: none; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  button.flow { border: 1px solid; background: transparent; color: #dbe4ff; border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; transition: all .15s; }
+  button.flow:hover { filter: brightness(1.3); }
+  button.flow:disabled { opacity: .35; cursor: not-allowed; }
+  #b-remember { border-color: #4f8cff; } #b-remember.playing, #b-remember:hover { background: #4f8cff22; }
+  #b-search   { border-color: #22c3a6; } #b-search.playing, #b-search:hover { background: #22c3a622; }
+  #b-forget   { border-color: #ff7a9e; } #b-forget.playing, #b-forget:hover { background: #ff7a9e22; }
+  #b-compact  { border-color: #ffb454; } #b-compact.playing, #b-compact:hover { background: #ffb45422; }
+  #b-tour     { border-color: #b48cff; } #b-tour.playing { background: #b48cff22; }
+  select { background: #131a2e; color: #dbe4ff; border: 1px solid #2a3856; border-radius: 8px; padding: 7px 8px; font-size: 13px; }
+  .stepbox { border: 1px solid #1f2a44; background: #0f1526; border-radius: 10px; padding: 10px 16px; margin-bottom: 12px; min-height: 46px; display: flex; align-items: center; gap: 14px; }
+  .stepbox .no { font-size: 20px; font-weight: 700; color: #6ea8ff; min-width: 34px; text-align: center; }
+  .stepbox .desc { font-size: 15px; }
+  .stepbox .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid; }
+  svg { width: 100%; height: auto; display: block; background: #0b1020; border: 1px solid #1f2a44; border-radius: 12px; }
+  .node rect.box { fill: #131a2e; stroke: #2a3856; stroke-width: 1.2; rx: 10; }
+  .node text.t { fill: #e8eeff; font-size: 14px; font-weight: 600; }
+  .node text.s { fill: #8fa3c8; font-size: 11px; }
+  .node.active rect.box { stroke-width: 2; filter: drop-shadow(0 0 8px currentColor); }
+  .edge { fill: none; stroke: #3a4a72; stroke-width: 1.4; }
+  .edge.dash { stroke-dasharray: 5 4; }
+  .edge.trunk { stroke-width: 2.2; }
+  .edge .lbl { stroke: none; fill: #7d92bd; font-size: 11px; }
+  .container-rect { fill: #0f1526; stroke: #1f2a44; stroke-dasharray: 2 0; }
+  .container-label { fill: #5f739e; font-size: 12px; }
+  .table-g rect { fill: #101830; stroke: #263354; rx: 8; }
+  .table-g text.t { fill: #cfe0ff; font-size: 12.5px; font-weight: 600; }
+  .table-g text.s { fill: #7d92bd; font-size: 10.5px; }
+  .table-g.glow rect { stroke-width: 1.8; filter: drop-shadow(0 0 9px currentColor); }
+  .legend text { fill: #7d92bd; font-size: 12px; }
+  .footer { color: #5f739e; font-size: 12px; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <h1><span>infimem</span> 架构与数据流转</h1>
+  <div class="sub">可治理、可评测的 Agent 记忆引擎 · 点击流程按钮观看数据流转 · 细节见 <a href="./ARCHITECTURE.md">ARCHITECTURE.md</a>(抽取在调用方 = 决策 D1,索引可重建 = ADR-001,supersedes/冲突隔离 = ADR-002,hash 默认 embedding = ADR-003)</div>
+
+  <div class="controls">
+    <button class="flow" id="b-remember">▶ remember 写入</button>
+    <button class="flow" id="b-search">▶ search 检索</button>
+    <button class="flow" id="b-forget">▶ forget 遗忘</button>
+    <button class="flow" id="b-compact">▶ compact 整理</button>
+    <button class="flow" id="b-tour">▶ 自动巡演全部</button>
+    <select id="speed" title="动画速度">
+      <option value="2">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="0.5">2×</option>
+      <option value="0.25">4×</option>
+    </select>
+    <span id="status" style="color:#5f739e;font-size:12px"></span>
+  </div>
+
+  <div class="stepbox">
+    <div class="no" id="step-no">—</div>
+    <div class="desc" id="step-desc">选择一个流程开始。粒子表示一次真实的数据流动:实线为写入/调用,虚线为读取/可替换点。</div>
+  </div>
+
+  <svg id="canvas" viewBox="0 0 1280 830" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div class="footer">infimem v0.1 · 零依赖单文件可视化 · 来源:src/ 真实实现(docs/architecture.html)</div>
+
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('canvas');
+const el = (tag, attrs, parent) => {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  (parent || svg).appendChild(n);
+  return n;
+};
+
+/* ---------- 组件(手排布局,依赖方向:接入层 → 引擎层 → 基础层/存储) ---------- */
+const NODES = {
+  'c-mcp':  { x: 60,  y: 20,  w: 260, h: 64, t: 'MCP 客户端',              s: ['Claude Code / Cursor · LLM 在此(D1)'] },
+  'c-cli':  { x: 360, y: 20,  w: 240, h: 64, t: 'CLI',                     s: ['init / add / search / import / eval'] },
+  'c-eval': { x: 640, y: 20,  w: 230, h: 64, t: '评测套件',                s: ['30 case · 走真实管线'] },
+  'server': { x: 250, y: 150, w: 350, h: 64, t: 'MCP Server(stdio JSON-RPC)', s: ['remember · search · forget · compact'] },
+  'ingest': { x: 60,  y: 290, w: 340, h: 100, t: '写入管线 remember',       s: ['zod 校验 → 幂等 → 去重', '→ supersedes/冲突隔离 → 同事务提交'] },
+  'retrieval': { x: 450, y: 290, w: 340, h: 100, t: '检索管线 search',      s: ['召回(FTS5 ∪ KNN)→ RRF(k=60)', '→ rerank 钩子 → Top-K 引用+分数'] },
+  'gov':    { x: 860, y: 290, w: 350, h: 100, t: '治理 forget / compact',   s: ['tombstone · 索引重建 · 报告', '全程审计留痕'] },
+  'schema': { x: 60,  y: 450, w: 220, h: 60, t: 'schema / zod',            s: ['契约校验 · canonical key'] },
+  'provider': { x: 950, y: 450, w: 260, h: 60, t: 'EmbeddingProvider',     s: ['hash 默认(离线)/ openai 可选'] },
+};
+const TABLES = {
+  'memories': { x: 100, y: 608, w: 330, h: 60, t: 'memories',       s: '唯一事实源 · supersedes 链 + status' },
+  'fts':      { x: 460, y: 608, w: 330, h: 60, t: 'memories_fts',   s: 'FTS5 external content · BM25' },
+  'vec':      { x: 820, y: 608, w: 330, h: 60, t: 'memories_vec',   s: 'sqlite-vec · cosine · metadata 回链' },
+  'conflicts':{ x: 100, y: 700, w: 200, h: 60, t: 'conflicts',      s: '冲突隔离' },
+  'audit':    { x: 330, y: 700, w: 240, h: 60, t: 'audit_events',   s: '审计 · 不含正文' },
+  'idem':     { x: 600, y: 700, w: 220, h: 60, t: 'idempotency_keys', s: '幂等重放' },
+  'meta':     { x: 850, y: 700, w: 180, h: 60, t: 'infimem_meta',   s: '维度绑定' },
+};
+
+/* ---------- 连线(d 为手工排线的路径,已避开组件框) ---------- */
+const EDGES = {
+  'e-cs':   { d: 'M190,84 C190,120 300,110 300,150',                       label: 'MCP stdio' },
+  'e-cli':  { d: 'M470,84 C470,120 150,140 150,290',                       label: 'CLI 直调引擎' },
+  'e-eval': { d: 'M755,84 C755,150 700,180 700,290',  dash: true,          label: '评测走真实管线' },
+  'e-s-i':  { d: 'M350,214 C350,250 300,250 300,290',                      label: 'remember' },
+  'e-s-r':  { d: 'M500,214 C500,250 620,250 620,290',                      label: 'search' },
+  'e-s-g':  { d: 'M560,214 C560,260 950,240 950,290',                      label: 'forget / compact' },
+  'e-i-s':  { d: 'M120,390 C120,420 150,420 150,450',                      label: 'zod 校验' },
+  'e-i-p':  { d: 'M350,390 C600,430 900,410 990,450',                      label: 'embed(内容+关键词)' },
+  'e-r-p':  { d: 'M700,390 C800,430 1000,410 1030,450', dash: true,        label: 'embed(query)' },
+  'e-g-p':  { d: 'M940,390 C940,425 1080,415 1080,450', dash: true,        label: '重建时重算' },
+  'trunk-i':{ d: 'M200,390 L200,560',  trunk: true,                        label: '写入(同事务)' },
+  'trunk-r':{ d: 'M620,390 L620,560',  trunk: true, dash: true,           label: '读' },
+  'trunk-g':{ d: 'M920,390 L920,560',  trunk: true,                        label: 'tombstone / 重建' },
+};
+
+/* ---------- 渲染 ---------- */
+const marker = el('defs', {});
+for (const [id, color] of Object.entries({ m: '#3a4a72' })) {
+  const mk = el('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, marker);
+  el('path', { d: 'M0,0 L10,5 L0,10 z', fill: color }, mk);
+}
+const nodeEls = {}, tableEls = {}, edgeEls = {};
+
+const sqliteRect = el('rect', { x: 60, y: 560, width: 1160, height: 240, rx: 12, class: 'container-rect' });
+const sqliteText = el('text', { x: 640, y: 586, 'text-anchor': 'middle', class: 'container-label' });
+sqliteText.textContent = 'SQLite 单文件(WAL)— memories 唯一事实源 · FTS/向量索引为可重建派生物(ADR-001)';
+
+for (const [id, n] of Object.entries(NODES)) {
+  const g = el('g', { class: 'node', id: 'n-' + id });
+  el('rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: 10, class: 'box' }, g);
+  const t = el('text', { x: n.x + n.w / 2, y: n.y + (n.s.length > 1 ? 28 : 26), 'text-anchor': 'middle', class: 't' }, g);
+  t.textContent = n.t;
+  n.s.forEach((line, i) => {
+    const st = el('text', { x: n.x + n.w / 2, y: n.y + (n.s.length > 1 ? 46 : 46) + i * 15, 'text-anchor': 'middle', class: 's' }, g);
+    st.textContent = line;
+  });
+  nodeEls[id] = g;
+}
+for (const [id, n] of Object.entries(TABLES)) {
+  const g = el('g', { class: 'table-g', id: 't-' + id });
+  g.style.color = '#7aa2ff';
+  el('rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: 8 }, g);
+  const t = el('text', { x: n.x + n.w / 2, y: n.y + 25, 'text-anchor': 'middle', class: 't' }, g);
+  t.textContent = n.t;
+  const s = el('text', { x: n.x + n.w / 2, y: n.y + 44, 'text-anchor': 'middle', class: 's' }, g);
+  s.textContent = n.s;
+  tableEls[id] = g;
+}
+for (const [id, e] of Object.entries(EDGES)) {
+  const p = el('path', { d: e.d, class: 'edge' + (e.dash ? ' dash' : '') + (e.trunk ? ' trunk' : ''), 'marker-end': 'url(#m)' });
+  const lbl = el('text', { class: 'lbl', 'text-anchor': 'middle' });
+  lbl.textContent = e.label;
+  const pt = p.getPointAtLength(p.getTotalLength() * 0.45);
+  lbl.setAttribute('x', pt.x); lbl.setAttribute('y', pt.y - 6);
+  edgeEls[id] = { path: p, label: lbl };
+}
+/* 图例 */
+const legend = el('g', { class: 'legend' });
+[['', 660, 480, '━━ 实线:写入 / 调用'], ['', 660, 502, '┄┄ 虚线:读取 / 可替换点(Reranker、EmbeddingProvider 均为接口)'], ['', 660, 524, '● 动画粒子:一次真实的数据流动']].forEach(([, x, y, txt]) => {
+  const t = el('text', { x, y }, legend); t.textContent = txt;
+});
+
+/* ---------- 动画引擎 ---------- */
+const sleep = (ms) => new Promise(r => setTimeout(r, ms * speed()));
+function speed() { return parseFloat(document.getElementById('speed').value); }
+let running = false;
+
+function highlight(id, color, ms) {
+  const g = nodeEls[id] || tableEls[id];
+  if (!g) return;
+  g.classList.add('active');
+  if (tableEls[id]) g.classList.add('glow');
+  g.style.color = color;
+  return sleep(ms).then(() => { g.classList.remove('active'); if (tableEls[id]) g.classList.remove('glow'); });
+}
+function particle(edgeId, color, { rev = false, dur = 900 } = {}) {
+  return new Promise(resolve => {
+    const { path } = edgeEls[edgeId];
+    const len = path.getTotalLength();
+    const dot = el('circle', { r: 5, fill: color, stroke: '#0b1020', 'stroke-width': 1.5 });
+    const start = performance.now(), real = dur * speed();
+    function frame(now) {
+      const t = Math.min(1, (now - start) / real);
+      const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // easeInOut
+      const p = path.getPointAtLength((rev ? 1 - e : e) * len);
+      dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y);
+      if (t < 1) requestAnimationFrame(frame);
+      else { dot.remove(); resolve(); }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+async function hl(id, color, ms) { await highlight(id, color, ms); }
+
+/* ---------- 流程脚本(与 ARCHITECTURE.md §3 一一对应) ---------- */
+const FLOWS = {
+  remember: { color: '#4f8cff', steps: [
+    ['调用方 LLM 按工具 schema 填参 —— 抽取发生在客户端,引擎不内置 LLM(D1)', [() => hl('c-mcp', '#4f8cff', 800)]],
+    ['remember 工具接收结构化参数,zod 校验(不合格直接拒收)', [() => particle('e-cs'), () => hl('ingest', '#4f8cff', 900), () => particle('e-i-s')]],
+    ['embedding 在事务外计算;失败不拒绝写入,降级 vec_pending', [() => particle('e-i-p'), () => hl('provider', '#4f8cff', 900)]],
+    ['事务内依次:幂等键 → 完全去重 → supersedes 版本链 → 冲突隔离(绝不静默覆盖)', [() => hl('ingest', '#4f8cff', 1100), () => hl('idem', '#4f8cff', 900), () => hl('conflicts', '#4f8cff', 900)]],
+    ['memories + FTS + 向量 三表同一事务原子提交(索引是可重建派生物)', [() => particle('trunk-i'), () => hl('memories', '#4f8cff', 1000), () => hl('fts', '#4f8cff', 1000), () => hl('vec', '#4f8cff', 1000)]],
+    ['写入审计事件 —— 只记动作与摘要,正文不入审计日志', [() => hl('audit', '#4f8cff', 900)]],
+    ['返回 { id, action: created | duplicate | superseded | conflict }', [() => particle('e-cs', '#4f8cff', { rev: true })]],
+  ]},
+  search: { color: '#22c3a6', steps: [
+    ['query 进入 search 工具(scope / k / max_sensitivity / type)', [() => particle('e-cs', '#22c3a6'), () => hl('retrieval', '#22c3a6', 700)]],
+    ['查询向量化 —— 默认 hash:词元 + CJK 字符二元组,确定性、离线可用(ADR-003)', [() => particle('e-r-p', '#22c3a6'), () => hl('provider', '#22c3a6', 900)]],
+    ['双路召回:FTS5 BM25 Top-50(SQL 内过滤)∪ sqlite-vec KNN Top-150(余弦 + maxDistance 截断)', [() => particle('trunk-r', '#22c3a6'), () => hl('fts', '#22c3a6', 1000), () => hl('vec', '#22c3a6', 1000)]],
+    ['RRF(k=60)融合两路名次,回表按 scope / status / 敏感级硬过滤', [() => hl('retrieval', '#22c3a6', 1100), () => hl('memories', '#22c3a6', 900)]],
+    ['rerank 钩子(v0.1 默认 Identity)→ 截断 Top-K,附各阶段分数与 trace', [() => hl('retrieval', '#22c3a6', 900)]],
+    ['结果返回调用方 —— 每条引用能回答"为什么被召回"', [() => particle('e-cs', '#22c3a6', { rev: true })]],
+  ]},
+  forget: { color: '#ff7a9e', steps: [
+    ['按 id 或 canonicalKey+scope 定位活跃记忆(仅 active;找不到即 NotFound)', [() => particle('e-s-g', '#ff7a9e'), () => hl('gov', '#ff7a9e', 800), () => hl('memories', '#ff7a9e', 900)]],
+    ['tombstone:status=deleted,不物理删除 —— 历史可审计、可从备份恢复', [() => particle('trunk-g', '#ff7a9e'), () => hl('memories', '#ff7a9e', 1000)]],
+    ['同步移除 FTS 行与向量行(UPDATE 触发器会重写索引,需显式补删)', [() => hl('fts', '#ff7a9e', 900), () => hl('vec', '#ff7a9e', 900)]],
+    ['写入 forget 审计事件;物理清除留给 v0.2 的导出后清除流', [() => hl('audit', '#ff7a9e', 900)]],
+  ]},
+  compact: { color: '#ffb454', steps: [
+    ['默认:报告版本链深度、冲突清单、vec_pending(不动数据)', [() => particle('e-s-g', '#ffb454'), () => hl('gov', '#ffb454', 800), () => hl('conflicts', '#ffb454', 800), () => hl('memories', '#ffb454', 800)]],
+    ['rebuildIndex:embedding 事务外批量重算(顺带补齐 vec_pending)', [() => particle('e-g-p', '#ffb454', { rev: true }), () => hl('provider', '#ffb454', 900)]],
+    ["FTS5 'rebuild' 全量重建 + 清空重灌向量 —— 索引损坏可自愈(ADR-001)", [() => particle('trunk-g', '#ffb454'), () => hl('fts', '#ffb454', 1000), () => hl('vec', '#ffb454', 1000)]],
+    ['写入 compact 审计事件', [() => hl('audit', '#ffb454', 900)]],
+  ]},
+};
+
+/* ---------- 运行器 ---------- */
+const descEl = document.getElementById('step-desc');
+const noEl = document.getElementById('step-no');
+const statusEl = document.getElementById('status');
+function setButtons(on) {
+  document.querySelectorAll('button.flow').forEach(b => { b.disabled = on; b.classList.remove('playing'); });
+}
+async function runFlow(name) {
+  if (running) return;
+  running = true; setButtons(true);
+  const btn = document.getElementById('b-' + name);
+  btn.classList.add('playing');
+  const flow = FLOWS[name];
+  for (let i = 0; i < flow.steps.length; i++) {
+    const [desc, actions] = flow.steps[i];
+    noEl.textContent = (i + 1) + '/' + flow.steps.length;
+    noEl.style.color = flow.color;
+    descEl.textContent = desc;
+    statusEl.textContent = '正在演示:' + name;
+    await Promise.all(actions.map(fn => fn()));
+    await sleep(350);
+  }
+  noEl.textContent = '✔'; descEl.textContent = name + ' 流程演示完毕。';
+  statusEl.textContent = '';
+  btn.classList.remove('playing'); setButtons(false);
+  running = false;
+}
+document.getElementById('b-remember').onclick = () => runFlow('remember');
+document.getElementById('b-search').onclick = () => runFlow('search');
+document.getElementById('b-forget').onclick = () => runFlow('forget');
+document.getElementById('b-compact').onclick = () => runFlow('compact');
+document.getElementById('b-tour').onclick = async () => {
+  if (running) return;
+  for (const name of ['remember', 'search', 'forget', 'compact']) await runFlow(name);
+};
+/* 深链:?autoplay=remember|search|forget|compact|tour */
+window.addEventListener('error', e => {
+  statusEl.textContent = '脚本错误:' + ((e && e.message) || e.type);
+});
+const auto = new URLSearchParams(location.search).get('autoplay');
+if (auto && (FLOWS[auto] || auto === 'tour')) {
+  setTimeout(auto === 'tour'
+    ? async () => { for (const n of ['remember', 'search', 'forget', 'compact']) await runFlow(n); }
+    : () => runFlow(auto), 500);
+}
+</script>
+</body>
+</html>

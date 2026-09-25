@@ -66,6 +66,8 @@ flowchart LR
 
 详见 [ARCHITECTURE.md](./ARCHITECTURE.md)(含完整流程图)、[FEATURES.md](./FEATURES.md)(功能契约)、[USAGE.md](./USAGE.md)(使用者指南)。
 
+**交互式架构可视化**:浏览器打开 [docs/architecture.html](./docs/architecture.html),点击 remember / search / forget / compact 观看数据流转动画(粒子 = 一次真实的数据流动),支持 `?autoplay=remember` 深链自动播放与自动巡演。
+
 ## 评测承诺
 
 评测集与代码同仓库,任何人可复现(`npm run eval`);Case 全部为合成数据并注明局限;影响检索/写入的 PR 在 CI 对比上一版数字,绝对退化 >2% 不能合并。
