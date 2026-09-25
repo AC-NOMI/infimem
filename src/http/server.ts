@@ -4,6 +4,9 @@ import type { EmbeddingProvider } from '../embeddings/types.js';
 import { remember } from '../ingest/ingest.js';
 import { search } from '../retrieval/search.js';
 import { InfimemError, NotFoundError, ValidationError } from '../errors.js';
+import { HeuristicExtractor } from '../extract/heuristic.js';
+import { ingestRaw } from '../extract/ingest.js';
+import type { Extractor } from '../extract/types.js';
 
 /**
  * 竞赛/自托管集成的 HTTP 薄层(COMPETITION.md G3):只做协议转换,
@@ -14,7 +17,8 @@ import { InfimemError, NotFoundError, ValidationError } from '../errors.js';
 export interface HttpServerOptions {
   port?: number;   // 默认 8787;0 = 随机端口(测试用)
   host?: string;   // 默认 127.0.0.1
-  token?: string;  // 配置后 /add /search 要求 Authorization: Bearer <token>(评测 Key)
+  token?: string;  // 配置后 /add /search /ingest 要求 Authorization: Bearer <token>(评测 Key)
+  extractors?: { heuristic: Extractor; llm?: Extractor };  // /ingest 用;llm 需 INFIMEM_LLM_API_KEY
 }
 
 const DEFAULT_PORT = 8787;
@@ -61,7 +65,7 @@ async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
 
 export function createHttpServer(db: Db, provider: EmbeddingProvider, opts: HttpServerOptions = {}): http.Server {
   return http.createServer((req, res) => {
-    handle(req, res, db, provider, opts.token).catch(e => {
+    handle(req, res, db, provider, opts).catch(e => {
       if (!res.headersSent) send(res, 500, { error: 'internal error' });
       console.error('[infimem-http]', e);
     });
@@ -73,9 +77,11 @@ async function handle(
   res: http.ServerResponse,
   db: Db,
   provider: EmbeddingProvider,
-  token?: string,
+  opts: HttpServerOptions,
 ): Promise<void> {
   const path = new URL(req.url ?? '/', 'http://localhost').pathname;
+  const token = opts.token;
+  const extractors = opts.extractors ?? { heuristic: new HeuristicExtractor() };
 
   if (path !== '/health' && token) {
     const auth = req.headers.authorization ?? '';
@@ -114,7 +120,32 @@ async function handle(
     }
   }
 
-  return send(res, 404, { error: 'not found (available: GET /health, POST /add, POST /search)' });
+  if (path === '/ingest') {
+    if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed, use POST' });
+    try {
+      const body = (await readJsonBody(req)) as { text?: unknown; extractor?: unknown; scope?: unknown };
+      if (typeof body.text !== 'string' || body.text.trim() === '') {
+        return send(res, 400, { error: 'invalid ingest input: text is required' });
+      }
+      const kind = body.extractor ?? 'heuristic';
+      if (kind !== 'heuristic' && kind !== 'llm') {
+        return send(res, 400, { error: 'invalid ingest input: extractor must be heuristic | llm' });
+      }
+      const extractor: Extractor | undefined = kind === 'llm' ? extractors.llm : extractors.heuristic;
+      if (!extractor) return send(res, 400, { error: 'llm extractor not configured (set INFIMEM_LLM_API_KEY)' });
+      const result = await ingestRaw(db, provider, {
+        text: body.text,
+        extractor,
+        scope: (body.scope ?? {}) as Parameters<typeof ingestRaw>[2] extends infer O ? O extends { scope?: infer S } ? S : never : never,
+        source: 'import',
+      });
+      return send(res, 200, result);
+    } catch (e) {
+      return sendError(res, e);
+    }
+  }
+
+  return send(res, 404, { error: 'not found (available: GET /health, POST /add, POST /search, POST /ingest)' });
 }
 
 function sendError(res: http.ServerResponse, e: unknown): void {

@@ -6,6 +6,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { openDb } from '../db/connection.js';
 import { createInfimemServer } from '../mcp/server.js';
 import { startHttpServer } from '../http/server.js';
+import { HeuristicExtractor } from '../extract/heuristic.js';
+import { LlmExtractor } from '../extract/llm.js';
+import { ingestRaw } from '../extract/ingest.js';
 import { getProviderFromEnv } from '../embeddings/env.js';
 import { runSuite, compareWithBaseline, reportToMarkdown } from '../eval/run.js';
 import type { EvalCase } from '../eval/types.js';
@@ -178,6 +181,33 @@ program
     });
     console.log(`infimem HTTP server listening at ${url} (provider: ${provider.name}, dim: ${provider.dim})`);
     console.log('endpoints: GET /health · POST /add · POST /search');
+  });
+
+program
+  .command('ingest')
+  .description('Extract memories from a raw text file and store them')
+  .argument('<file>')
+  .option('--db <path>')
+  .option('--extractor <kind>', 'heuristic | llm (llm needs INFIMEM_LLM_API_KEY)', 'heuristic')
+  .option('--project <name>')
+  .option('--session <id>')
+  .action(async (file, opts) => {
+    const extractor = opts.extractor === 'llm' ? new LlmExtractor() : new HeuristicExtractor();
+    const text = readFileSync(file, 'utf8');
+    const provider = getProviderFromEnv();
+    const db = openDb(h.resolveDbPath(opts.db), { dim: provider.dim });
+    try {
+      const r = await ingestRaw(db, provider, {
+        text,
+        extractor,
+        scope: { project: opts.project, session: opts.session },
+      });
+      const byAction: Record<string, number> = {};
+      for (const x of r.results) byAction[x.action] = (byAction[x.action] ?? 0) + 1;
+      console.log(JSON.stringify({ extracted: r.extracted, ...byAction }, null, 2));
+    } finally {
+      db.close();
+    }
   });
 
 program

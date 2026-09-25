@@ -101,6 +101,23 @@ describe('bearer token enforcement', () => {
   });
 });
 
+describe('POST /ingest (raw text extraction)', () => {
+  it('extracts from raw text via heuristic extractor and ingests', async () => {
+    const base = await makeServer();
+    const r = await post(base, '/ingest', { text: '偏好:部署用 pnpm', scope: { project: 'aml' } });
+    expect(r.status).toBe(200);
+    expect(r.json.extracted).toBe(1);
+    expect(r.json.results[0].action).toBe('created');
+  });
+
+  it('returns 400 when llm extractor is requested but not configured', async () => {
+    const base = await makeServer();
+    const r = await post(base, '/ingest', { text: 'x', extractor: 'llm' });
+    expect(r.status).toBe(400);
+    expect(r.json.error).toContain('llm extractor not configured');
+  });
+});
+
 describe('routing', () => {
   it('returns 404 for unknown paths and 405 for wrong methods', async () => {
     const base = await makeServer();
