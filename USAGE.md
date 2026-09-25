@@ -82,6 +82,7 @@ npx infimem eval --suite ./my-cases       # 自建 case 跑评测
 - **scope 映射约定**(建议):`project` = 项目名或仓库 id,`session` = 会话 id;不传则落 user 作用域。
 - **重试**:写操作带 `idempotency_key` 即可安全重试,引擎保证不重复入库。
 - **敏感数据**:写入时标 `sensitivity: "sensitive"`,检索默认 `max_sensitivity: normal` 不会带出。
+- **HTTP 接入**(v0.1.1 新增,无 MCP 运行时的场景):`infimem serve --port 8787 --token <key>`;`GET /health`、`POST /add`(参数同 remember 工具)、`POST /search`(参数同 search 工具),JSON 直传,校验语义与 MCP 完全一致。
 
 ## 5. 数据在用户手里
 

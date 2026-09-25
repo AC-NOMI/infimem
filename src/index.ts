@@ -7,6 +7,7 @@ export { IdentityReranker, type Reranker } from './retrieval/rerank.js';
 export { forget, type ForgetResult } from './governance/forget.js';
 export { compact, type CompactOptions, type CompactReport } from './governance/compact.js';
 export { createInfimemServer, SERVER_INSTRUCTIONS } from './mcp/server.js';
+export { createHttpServer, startHttpServer, type HttpServerOptions } from './http/server.js';
 export { HashEmbeddingProvider, HASH_EMBEDDING_DIM } from './embeddings/hash.js';
 export { OpenAIEmbeddingProvider } from './embeddings/openai.js';
 export { getProviderFromEnv } from './embeddings/env.js';

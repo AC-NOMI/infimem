@@ -5,6 +5,7 @@ import { Command } from 'commander';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { openDb } from '../db/connection.js';
 import { createInfimemServer } from '../mcp/server.js';
+import { startHttpServer } from '../http/server.js';
 import { getProviderFromEnv } from '../embeddings/env.js';
 import { runSuite, compareWithBaseline, reportToMarkdown } from '../eval/run.js';
 import type { EvalCase } from '../eval/types.js';
@@ -158,6 +159,25 @@ program
     const db = openDb(h.resolveDbPath(opts.db), { dim: provider.dim });
     const server = createInfimemServer(db, provider);
     await server.connect(new StdioServerTransport());
+  });
+
+program
+  .command('serve')
+  .description('Start the HTTP Add/Search server (competition / self-hosted integration)')
+  .option('--db <path>')
+  .option('--port <n>', 'Port (default 8787)')
+  .option('--host <h>', 'Bind address (default 127.0.0.1)')
+  .option('--token <t>', 'Require bearer auth (default $INFIMEM_HTTP_TOKEN)')
+  .action(async (opts) => {
+    const provider = getProviderFromEnv();
+    const db = openDb(h.resolveDbPath(opts.db), { dim: provider.dim });
+    const { url } = await startHttpServer(db, provider, {
+      port: opts.port ? Number(opts.port) : undefined,
+      host: opts.host,
+      token: opts.token ?? process.env.INFIMEM_HTTP_TOKEN,
+    });
+    console.log(`infimem HTTP server listening at ${url} (provider: ${provider.name}, dim: ${provider.dim})`);
+    console.log('endpoints: GET /health · POST /add · POST /search');
   });
 
 program
