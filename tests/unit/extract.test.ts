@@ -85,6 +85,35 @@ describe('LlmExtractor(gpt-4o-mini 适配器,mock fetch)', () => {
     expect(attempts).toBe(2); // 503 重试一次,再失败于解析
   });
 
+  it('extracts chunks concurrently while preserving chunk order in output', async () => {
+    let inFlight = 0, maxInFlight = 0;
+    const delays: Record<string, number> = { a: 60, b: 30, c: 10 }; // 完成顺序将是 c,b,a
+    const fetchImpl = (async (url: any, init: any) => {
+      inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+      const chunk: string = JSON.parse(init.body).messages.at(-1).content;
+      await new Promise(r => setTimeout(r, delays[chunk[0]] ?? 10));
+      inFlight--;
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ memories: [{ content: `mem:${chunk[0]}`, type: 'fact' }] }) } }] }) };
+    }) as typeof fetch;
+    const ex = new LlmExtractor({ apiKey: 'k', chunkSize: 10, concurrency: 3, fetchImpl });
+    const out = await ex.extract('aaaaaaaaaabbbbbbbbbbcccccccccc');
+    expect(out.map(m => m.content)).toEqual(['mem:a', 'mem:b', 'mem:c']); // 顺序 = 分块顺序
+    expect(maxInFlight).toBeGreaterThanOrEqual(2); // 并发确实发生
+  });
+
+  it('honors concurrency=1 as fully sequential', async () => {
+    let inFlight = 0, maxInFlight = 0;
+    const fetchImpl = (async (url: any, init: any) => {
+      inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise(r => setTimeout(r, 5));
+      inFlight--;
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{"memories":[]}' } }] }) };
+    }) as typeof fetch;
+    const ex = new LlmExtractor({ apiKey: 'k', chunkSize: 5, concurrency: 1, fetchImpl });
+    await ex.extract('x'.repeat(20));
+    expect(maxInFlight).toBe(1);
+  });
+
   it('chunks long inputs into multiple LLM calls', async () => {
     let calls = 0;
     const ex = new LlmExtractor({

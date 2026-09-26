@@ -34,6 +34,8 @@ export interface LlmExtractorOptions {
   fetchImpl?: typeof fetch;
   chunkSize?: number;
   retries?: number;
+  /** 分块并发抽取数(默认 4;INFIMEM_LLM_CONCURRENCY 可调) */
+  concurrency?: number;
 }
 
 /** gpt-4o-mini(OpenAI 兼容端点)抽取器 —— 赛事 Add 场景的系统内抽取(D1 的可选增强路径) */
@@ -45,6 +47,7 @@ export class LlmExtractor implements Extractor {
   private readonly fetchImpl: typeof fetch;
   private readonly chunkSize: number;
   private readonly retries: number;
+  private readonly concurrency: number;
 
   constructor(opts: LlmExtractorOptions = {}) {
     this.apiKey = opts.apiKey ?? process.env.INFIMEM_LLM_API_KEY ?? '';
@@ -53,15 +56,25 @@ export class LlmExtractor implements Extractor {
     this.fetchImpl = opts.fetchImpl ?? ((url, init) => fetch(url, init));
     this.chunkSize = opts.chunkSize ?? 3000;
     this.retries = opts.retries ?? 1;
+    this.concurrency = opts.concurrency ?? Number(process.env.INFIMEM_LLM_CONCURRENCY ?? 4);
+    if (!Number.isInteger(this.concurrency) || this.concurrency < 1) {
+      throw new InfimemError(`concurrency must be an integer >= 1, got ${this.concurrency}`);
+    }
     if (!this.apiKey) throw new InfimemError('LlmExtractor requires an API key (INFIMEM_LLM_API_KEY)');
   }
 
   async extract(text: string): Promise<ExtractedMemory[]> {
-    const out: ExtractedMemory[] = [];
-    for (const chunk of chunkText(text, this.chunkSize)) {
-      out.push(...(await this.extractChunk(chunk)));
-    }
-    return out;
+    const chunks = chunkText(text, this.chunkSize);
+    const results = new Array<ExtractedMemory[]>(chunks.length);
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < chunks.length) {
+        const idx = next++;
+        results[idx] = await this.extractChunk(chunks[idx]!);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(this.concurrency, chunks.length) }, worker));
+    return results.flat(); // 按 chunk 原顺序拼接,与完成顺序无关
   }
 
   private async extractChunk(chunk: string): Promise<ExtractedMemory[]> {
