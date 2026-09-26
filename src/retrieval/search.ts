@@ -5,7 +5,7 @@ import type { EmbeddingProvider } from '../embeddings/types.js';
 import { MEMORY_TYPES, SENSITIVITY_LEVELS, scopeSchema, type Scope } from '../schema/memory.js';
 import { MEMORY_COLUMNS, rowToMemory, type MemoryRecord } from '../schema/row.js';
 import { ValidationError } from '../errors.js';
-import { scopeCondition, SENSITIVITY_SQL } from './scope.js';
+import { scopeCondition, scopePairs, SENSITIVITY_SQL } from './scope.js';
 import { IdentityReranker, type Reranker } from './rerank.js';
 import type { ScoredResult, SearchOutput } from './types.js';
 
@@ -158,12 +158,7 @@ function matchesScope(
   includeAncestors: boolean,
 ): boolean {
   if (row.user !== scope.user) return false;
-  const pairs: Array<[string | null, string | null]> = [[scope.project ?? null, scope.session ?? null]];
-  if (includeAncestors && scope.project != null) {
-    if (scope.session != null) pairs.push([scope.project, null]);
-    pairs.push([null, null]);
-  }
-  return pairs.some(([p, s]) => row.project === p && row.session === s);
+  return scopePairs(scope, includeAncestors).some(([p, s]) => row.project === p && row.session === s);
 }
 
 /** 用户查询 → 安全的 FTS5 MATCH 表达式:提取词元,逐个引号 + 前缀,OR 连接;零词元时跳过 FTS 路 */

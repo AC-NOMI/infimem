@@ -47,31 +47,56 @@ describe('GET /health', () => {
   });
 });
 
-describe('POST /add + /search roundtrip', () => {
-  it('stores through the real ingest pipeline and retrieves via the real search pipeline', async () => {
-    const base = await makeServer();
-    const added = await post(base, '/add', {
-      content: 'backend deploys use pnpm',
-      type: 'preference',
-      keywords: ['pnpm'],
-      scope: { project: 'aml' },
-    });
-    expect(added.status).toBe(200);
-    expect(added.json).toMatchObject({ action: 'created' });
-    expect(added.json.id).toBeDefined();
+const competitionAddBody = (request_id = 'eval:run1:locomo_refined:conv-0:chunk-0') => ({
+  request_id,
+  messages: [
+    { role: 'user', timestamp: 1704067200000, content: '偏好:部署用 pnpm' },
+    { role: 'assistant', content: '好的,记住了' },
+  ],
+  user_id: 'eval:run1:locomo:conv-0',
+  session_id: 'eval:run1:sample:0',
+});
 
-    const found = await post(base, '/search', { query: 'pnpm', k: 5, scope: { project: 'aml' } });
-    expect(found.status).toBe(200);
-    expect(found.json.results[0].content).toBe('backend deploys use pnpm');
-    expect(found.json.results[0].scores.rrf).toBeGreaterThan(0);
-    expect(found.json.trace.fused).toBeGreaterThan(0);
+describe('POST /add(竞赛契约)+ /search', () => {
+  it('accepts the competition contract, echoes request_id, and stores via the real pipeline', async () => {
+    const d = openDb(join(dir, `contract-${Math.random().toString(36).slice(2)}.db`));
+    const { server, url: base } = await startHttpServer(d, hashProvider, { port: 0, host: '127.0.0.1' });
+    servers.push(server);
+    const added = await post(base, '/add', competitionAddBody());
+    expect(added.status).toBe(200);
+    expect(added.json.request_id).toBe('eval:run1:locomo_refined:conv-0:chunk-0');
+    expect(added.json.extracted).toBeGreaterThanOrEqual(1);
+    expect(added.json.results[0].action).toBe('created');
+    // user_id 是隔离边界,session 记到来源引用
+    const mem = d.prepare('SELECT scope_user, scope_project, scope_session, source_ref FROM memories LIMIT 1').get() as any;
+    expect(mem.scope_user).toBe('eval:run1:locomo:conv-0');
+    expect(mem.scope_session).toBeNull();
+    expect(mem.source_ref).toBe('session:eval:run1:sample:0');
+    d.close();
   });
 
-  it('rejects invalid add payloads with 400 and the engine error message', async () => {
+  it('is idempotent: retrying the same request_id writes nothing new and echoes request_id', async () => {
     const base = await makeServer();
-    const r = await post(base, '/add', { content: '' });
+    const first = await post(base, '/add', competitionAddBody());
+    const second = await post(base, '/add', competitionAddBody());
+    expect(second.status).toBe(200);
+    expect(second.json.request_id).toBe(first.json.request_id);
+    expect(second.json.results.map((x: any) => x.id)).toEqual(first.json.results.map((x: any) => x.id));
+  });
+
+  it('search by user_id crosses sessions (user_id is the isolation boundary)', async () => {
+    const base = await makeServer();
+    await post(base, '/add', competitionAddBody());
+    const found = await post(base, '/search', { user_id: 'eval:run1:locomo:conv-0', query: 'pnpm', k: 10 });
+    expect(found.status).toBe(200);
+    expect(found.json.results.some((x: any) => x.content.includes('pnpm'))).toBe(true);
+  });
+
+  it('rejects missing required fields with 400', async () => {
+    const base = await makeServer();
+    const r = await post(base, '/add', { request_id: 'x', messages: [], user_id: 'u', session_id: 's' });
     expect(r.status).toBe(400);
-    expect(r.json.error).toContain('invalid remember input');
+    expect(r.json.request_id).toBe('x');
   });
 
   it('rejects malformed JSON bodies with 400', async () => {
@@ -91,13 +116,13 @@ describe('POST /add + /search roundtrip', () => {
 describe('bearer token enforcement', () => {
   it('returns 401 without or with wrong token, 200 with the right one', async () => {
     const base = await makeServer('secret-token');
-    const noAuth = await post(base, '/add', { content: 'hello world note' });
+    const noAuth = await post(base, '/add', competitionAddBody());
     expect(noAuth.status).toBe(401);
-    const wrongAuth = await post(base, '/add', { content: 'hello world note' }, 'wrong');
+    const wrongAuth = await post(base, '/add', competitionAddBody(), 'wrong');
     expect(wrongAuth.status).toBe(401);
-    const rightAuth = await post(base, '/add', { content: 'hello world note' }, 'secret-token');
+    const rightAuth = await post(base, '/add', competitionAddBody(), 'secret-token');
     expect(rightAuth.status).toBe(200);
-    expect(rightAuth.json.action).toBe('created');
+    expect(rightAuth.json.results[0].action).toBe('created');
   });
 });
 

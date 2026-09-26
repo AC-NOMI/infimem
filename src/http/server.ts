@@ -1,7 +1,7 @@
 import http from 'node:http';
+import { z } from 'zod';
 import type { Db } from '../db/connection.js';
 import type { EmbeddingProvider } from '../embeddings/types.js';
-import { remember } from '../ingest/ingest.js';
 import { search } from '../retrieval/search.js';
 import { InfimemError, NotFoundError, ValidationError } from '../errors.js';
 import { HeuristicExtractor } from '../extract/heuristic.js';
@@ -63,6 +63,29 @@ async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
   }
 }
 
+const competitionMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  // 文本/代码赛道为字符串;多模态为有序 ContentPart[],此处防御性兼容只取文本段
+  content: z.union([
+    z.string().min(1),
+    z.array(z.object({ text: z.string().optional() }).passthrough()).min(1),
+  ]).transform(v => (typeof v === 'string' ? v : v.map(p => p.text ?? '').join(' ').trim())),
+  timestamp: z.number().int().nonnegative().optional(),
+});
+
+const competitionAddSchema = z.object({
+  request_id: z.string().trim().min(1).max(256),
+  messages: z.array(competitionMessageSchema).min(1).max(500),
+  user_id: z.string().trim().min(1).max(128),
+  session_id: z.string().trim().min(1).max(256),
+});
+
+function composeTranscript(messages: { role: string; content: string; timestamp?: number }[]): string {
+  return messages
+    .map(m => `${m.role}${m.timestamp ? ` [${new Date(m.timestamp).toISOString()}]` : ''}: ${m.content}`)
+    .join('\n');
+}
+
 export function createHttpServer(db: Db, provider: EmbeddingProvider, opts: HttpServerOptions = {}): http.Server {
   return http.createServer((req, res) => {
     handle(req, res, db, provider, opts).catch(e => {
@@ -103,8 +126,31 @@ async function handle(
   if (path === '/add') {
     if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed, use POST' });
     try {
-      const body = await readJsonBody(req);
-      return send(res, 200, await remember(db, provider, body));
+      const rawBody = await readJsonBody(req);
+      const parsed = competitionAddSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        const rid = (rawBody as { request_id?: unknown }).request_id;
+        return send(res, 400, {
+          ...(typeof rid === 'string' && rid ? { request_id: rid } : {}),
+          error: 'invalid add payload: ' + parsed.error.issues.map(i => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; '),
+        });
+      }
+      const { request_id, messages, user_id, session_id } = parsed.data;
+      // 抽取质量优先:LLM 已配置则用 LLM,否则退回规则版(离线冒烟)
+      const extractor = extractors.llm ?? extractors.heuristic;
+      const result = await ingestRaw(db, provider, {
+        text: composeTranscript(messages),
+        extractor,
+        scope: { user: user_id },
+        source: 'import',
+        idempotencyKeyPrefix: request_id,
+        sourceRef: `session:${session_id}`,
+      });
+      return send(res, 200, {
+        request_id,
+        extracted: result.extracted,
+        results: result.results.map(r => ({ id: r.id, action: r.action })),
+      });
     } catch (e) {
       return sendError(res, e);
     }
@@ -113,7 +159,14 @@ async function handle(
   if (path === '/search') {
     if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed, use POST' });
     try {
-      const body = await readJsonBody(req);
+      const body = (await readJsonBody(req)) as Record<string, unknown>;
+      // 竞赛契约:user_id 是隔离边界,Search 用相同值;session_id 可选收敛范围
+      if (typeof body.user_id === 'string' && body.user_id.trim()) {
+        const scope = (body.scope ?? {}) as Record<string, unknown>;
+        scope.user = body.user_id;
+        if (typeof body.session_id === 'string' && body.session_id) scope.session = body.session_id;
+        body.scope = scope;
+      }
       return send(res, 200, await search(db, provider, body));
     } catch (e) {
       return sendError(res, e);

@@ -23,8 +23,9 @@ export class HeuristicExtractor implements Extractor {
       const line = rawLine.trim();
       if (!line) continue;
       for (const piece of splitSentences(line)) {
+        // 对话 transcript 的角色与时间戳标记先剥离(可组合出现),再做类型前缀判定
+        let content = piece.replace(/^(user|assistant|system)\s*(?:\[[^\]]+\]\s*)?[:：]\s*/i, '');
         let type: MemoryType = 'fact';
-        let content = piece;
         for (const [re, t] of PREFIX_RULES) {
           if (re.test(content)) {
             type = t;

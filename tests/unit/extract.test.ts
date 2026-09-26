@@ -25,6 +25,12 @@ describe('HeuristicExtractor(规则版,零依赖基线)', () => {
     expect(out.every(m => m.type === 'fact')).toBe(true);
   });
 
+  it('strips dialogue role markers and timestamps from transcript lines', async () => {
+    const out = await ex.extract("user [2024-01-01T00:00:00.000Z]: 偏好:部署用 pnpm 管理依赖\nassistant: 好的,已记住");
+    expect(out[0]).toMatchObject({ type: 'preference', content: '部署用 pnpm 管理依赖' });
+    expect(out[1]).toMatchObject({ content: '好的,已记住' });
+  });
+
   it('splits over-long lines at sentence boundaries instead of dropping them', async () => {
     const sentence = '这是一条比较长的记忆句子用来测试分句逻辑。';
     const out = await ex.extract(sentence.repeat(100));
@@ -119,6 +125,28 @@ describe('ingestRaw(抽取 + 批量入库,走真实 remember 管线)', () => {
       scope: { project: 'aml' },
     });
     expect(second.results.every(r => r.action === 'duplicate')).toBe(true);
+    d.close();
+  });
+
+  it('derives per-item idempotency keys from the prefix so batch retries replay identically', async () => {
+    const d = newDb();
+    const text = '偏好:部署用 pnpm\n偏好:周五发布';
+    const o1 = await ingestRaw(d, hashProvider, { text, extractor: new HeuristicExtractor(), scope: {}, idempotencyKeyPrefix: 'eval:run1:chunk-0' });
+    const o2 = await ingestRaw(d, hashProvider, { text, extractor: new HeuristicExtractor(), scope: {}, idempotencyKeyPrefix: 'eval:run1:chunk-0' });
+    expect(o1.results.map(r => r.id)).toEqual(o2.results.map(r => r.id));
+    expect((d.prepare('SELECT count(*) c FROM memories').get() as any).c).toBe(2);
+    const keys = (d.prepare('SELECT key FROM idempotency_keys ORDER BY key').all() as any[]).map(r => r.key);
+    expect(keys).toEqual(['eval:run1:chunk-0:0', 'eval:run1:chunk-0:1']);
+    d.close();
+  });
+
+  it('sourceRef is applied to every extracted memory', async () => {
+    const d = newDb();
+    const { results } = await ingestRaw(d, hashProvider, {
+      text: '偏好:喜欢深色主题', extractor: new HeuristicExtractor(), scope: {}, sourceRef: 'session:eval:r1:sample:0',
+    });
+    const row = d.prepare('SELECT source_ref FROM memories WHERE id = ?').get(results[0]!.id) as any;
+    expect(row.source_ref).toBe('session:eval:r1:sample:0');
     d.close();
   });
 
