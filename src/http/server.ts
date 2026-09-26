@@ -6,6 +6,7 @@ import { search } from '../retrieval/search.js';
 import { InfimemError, NotFoundError, ValidationError } from '../errors.js';
 import { HeuristicExtractor } from '../extract/heuristic.js';
 import { ingestRaw } from '../extract/ingest.js';
+import { remember } from '../ingest/ingest.js';
 import type { Extractor } from '../extract/types.js';
 
 /**
@@ -138,19 +139,27 @@ async function handle(
       const { request_id, messages, user_id, session_id } = parsed.data;
       // 抽取质量优先:LLM 已配置则用 LLM,否则退回规则版(离线冒烟)
       const extractor = extractors.llm ?? extractors.heuristic;
+      const transcript = composeTranscript(messages);
       const result = await ingestRaw(db, provider, {
-        text: composeTranscript(messages),
+        text: transcript,
         extractor,
         scope: { user: user_id },
         source: 'import',
         idempotencyKeyPrefix: request_id,
         sourceRef: `session:${session_id}`,
       });
-      return send(res, 200, {
-        request_id,
-        extracted: result.extracted,
-        results: result.results.map(r => ({ id: r.id, action: r.action })),
-      });
+      if (result.results.length === 0) {
+        // 兜底:抽取为 0 时存储原文,保证 success=true 的承诺(已持久化且可立即检索)
+        await remember(db, provider, {
+          content: transcript.slice(0, 2000),
+          type: 'fact',
+          scope: { user: user_id },
+          source: 'import',
+          idempotencyKey: `${request_id}:raw`,
+          sourceRef: `session:${session_id}`,
+        });
+      }
+      return send(res, 200, { success: true, request_id, user_id, session_id });
     } catch (e) {
       return sendError(res, e);
     }
@@ -167,7 +176,29 @@ async function handle(
         if (typeof body.session_id === 'string' && body.session_id) scope.session = body.session_id;
         body.scope = scope;
       }
-      return send(res, 200, await search(db, provider, body));
+      // top_k → k(正式评测固定 100);选择题 options 并入查询文本
+      if (body.top_k !== undefined) {
+        body.k = Number(body.top_k);
+        delete body.top_k;
+      } else if (body.user_id !== undefined && body.k === undefined) {
+        body.k = 100;
+      }
+      let query = typeof body.query === 'string' ? body.query : '';
+      if (Array.isArray(body.options)) {
+        const opts = body.options.filter((o): o is string => typeof o === 'string');
+        if (opts.length > 0) query = `${query}\n${opts.join('\n')}`;
+        delete body.options;
+      }
+      body.query = query;
+      const out = await search(db, provider, body);
+      return send(res, 200, {
+        data: out.results.map(r => ({
+          id: r.id,
+          content: r.content,
+          score: r.scores.rrf,
+          created_at: r.createdAt,
+        })),
+      });
     } catch (e) {
       return sendError(res, e);
     }

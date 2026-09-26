@@ -13,7 +13,7 @@ export const searchInputSchema = z.object({
   query: z.string().trim().min(1).max(512),
   scope: scopeSchema.optional(),
   includeAncestors: z.boolean().default(true),
-  k: z.number().int().min(1).max(20).default(5),
+  k: z.number().int().min(1).max(100).default(5), // 上限 100:竞赛 top_k=100(FEATURES 契约随之放宽)
   maxSensitivity: z.enum(SENSITIVITY_LEVELS).default('normal'),
   type: z.enum(MEMORY_TYPES).optional(),
   // hash 向量下不相关文本的余弦距离 ≈ 1.0;截断是启发式,换 API provider 时可放宽
@@ -23,8 +23,8 @@ export const searchInputSchema = z.object({
 export type SearchInput = z.infer<typeof searchInputSchema>;
 
 const RRF_K = 60;
-const OVERFETCH_FTS = 50;
-const OVERFETCH_VEC = 150;
+const OVERFETCH_FTS = 200;
+const OVERFETCH_VEC = 400;
 
 /**
  * 检索管线(见 FEATURES.md §5):

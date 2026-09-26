@@ -64,9 +64,12 @@ describe('POST /add(竞赛契约)+ /search', () => {
     servers.push(server);
     const added = await post(base, '/add', competitionAddBody());
     expect(added.status).toBe(200);
-    expect(added.json.request_id).toBe('eval:run1:locomo_refined:conv-0:chunk-0');
-    expect(added.json.extracted).toBeGreaterThanOrEqual(1);
-    expect(added.json.results[0].action).toBe('created');
+    expect(added.json).toMatchObject({
+      success: true,
+      request_id: 'eval:run1:locomo_refined:conv-0:chunk-0',
+      user_id: 'eval:run1:locomo:conv-0',
+      session_id: 'eval:run1:sample:0',
+    });
     // user_id 是隔离边界,session 记到来源引用
     const mem = d.prepare('SELECT scope_user, scope_project, scope_session, source_ref FROM memories LIMIT 1').get() as any;
     expect(mem.scope_user).toBe('eval:run1:locomo:conv-0');
@@ -75,21 +78,52 @@ describe('POST /add(竞赛契约)+ /search', () => {
     d.close();
   });
 
-  it('is idempotent: retrying the same request_id writes nothing new and echoes request_id', async () => {
-    const base = await makeServer();
+  it('is idempotent: retrying the same request_id writes nothing new', async () => {
+    const d = openDb(join(dir, `idem-${Math.random().toString(36).slice(2)}.db`));
+    const { server, url: base } = await startHttpServer(d, hashProvider, { port: 0, host: '127.0.0.1' });
+    servers.push(server);
     const first = await post(base, '/add', competitionAddBody());
     const second = await post(base, '/add', competitionAddBody());
+    expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(second.json.request_id).toBe(first.json.request_id);
-    expect(second.json.results.map((x: any) => x.id)).toEqual(first.json.results.map((x: any) => x.id));
+    expect(second.json).toMatchObject({ success: true, request_id: first.json.request_id });
+    expect((d.prepare('SELECT count(*) c FROM memories').get() as any).c).toBe(2);
+    d.close();
   });
 
-  it('search by user_id crosses sessions (user_id is the isolation boundary)', async () => {
+  it('search by user_id crosses sessions and returns official data shape', async () => {
     const base = await makeServer();
     await post(base, '/add', competitionAddBody());
-    const found = await post(base, '/search', { user_id: 'eval:run1:locomo:conv-0', query: 'pnpm', k: 10 });
+    const found = await post(base, '/search', { user_id: 'eval:run1:locomo:conv-0', query: 'pnpm', top_k: 100 });
     expect(found.status).toBe(200);
-    expect(found.json.results.some((x: any) => x.content.includes('pnpm'))).toBe(true);
+    expect(Array.isArray(found.json.data)).toBe(true);
+    const hit = found.json.data.find((x: any) => x.content.includes('pnpm'));
+    expect(hit).toBeDefined();
+    expect(hit.id).toBeDefined();
+    expect(typeof hit.score).toBe('number');
+    expect(hit.created_at).toBeDefined();
+  });
+
+  it('accepts multiple-choice options and honors top_k as the cap', async () => {
+    const base = await makeServer();
+    await post(base, '/add', competitionAddBody());
+    const found = await post(base, '/search', {
+      query: 'Which answer best matches the memory?',
+      options: ['A. uses npm', 'B. uses pnpm', 'C. uses yarn'],
+      user_id: 'eval:run1:locomo:conv-0',
+      top_k: 1,
+    });
+    expect(found.status).toBe(200);
+    expect(found.json.data.length).toBeLessThanOrEqual(1);
+    expect(found.json.data[0].content).toContain('pnpm');
+  });
+
+  it('returns data: [] (not omitted) when nothing matches', async () => {
+    const base = await makeServer();
+    await post(base, '/add', competitionAddBody());
+    const found = await post(base, '/search', { user_id: 'eval:other-user', query: 'pnpm', top_k: 10 });
+    expect(found.status).toBe(200);
+    expect(found.json).toEqual({ data: [] });
   });
 
   it('rejects missing required fields with 400', async () => {
@@ -122,7 +156,7 @@ describe('bearer token enforcement', () => {
     expect(wrongAuth.status).toBe(401);
     const rightAuth = await post(base, '/add', competitionAddBody(), 'secret-token');
     expect(rightAuth.status).toBe(200);
-    expect(rightAuth.json.results[0].action).toBe('created');
+    expect(rightAuth.json.success).toBe(true);
   });
 });
 
