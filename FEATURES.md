@@ -187,7 +187,7 @@ infimem mcp                          # 启动 MCP stdio server
 infimem eval   --suite <dir> [--report out/] [--baseline file]
 ```
 
-配置:数据库路径 `--db` > `INFIMEM_DB` > `./infimem.db`;embedding provider `INFIMEM_EMBEDDING=hash|openai`。
+配置:数据库路径 `--db` > `INFIMEM_DB` > `./infimem.db`;embedding provider `INFIMEM_EMBEDDING=hash|openai|v4`(v4 = DashScope text-embedding-v4,竞赛 G2)。
 
 ## 8. 评测套件 v1(章程 §8 的落地)
 
