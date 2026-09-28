@@ -7,6 +7,7 @@ import { InfimemError, NotFoundError, ValidationError } from '../errors.js';
 import { HeuristicExtractor } from '../extract/heuristic.js';
 import { ingestRaw } from '../extract/ingest.js';
 import { remember } from '../ingest/ingest.js';
+import type { DbRouter } from './db-router.js';
 import type { Extractor } from '../extract/types.js';
 
 /**
@@ -20,6 +21,8 @@ export interface HttpServerOptions {
   host?: string;   // 默认 127.0.0.1
   token?: string;  // 配置后 /add /search /ingest 要求 Authorization: Bearer <token>(评测 Key)
   extractors?: { heuristic: Extractor; llm?: Extractor };  // /ingest 用;llm 需 INFIMEM_LLM_API_KEY
+  /** 分片路由(竞赛规模):带 user_id 的 /add /search 落到该 user 的独立库;缺省全部走基础库 */
+  router?: DbRouter;
 }
 
 const DEFAULT_PORT = 8787;
@@ -120,6 +123,7 @@ async function handle(
       ok: true,
       name: 'infimem',
       provider: { name: provider.name, dim: provider.dim },
+      ...(opts.router ? { shards: opts.router.size } : {}),
       time: new Date().toISOString(),
     });
   }
@@ -137,10 +141,11 @@ async function handle(
         });
       }
       const { request_id, messages, user_id, session_id } = parsed.data;
+      const targetDb = opts.router ? opts.router.forUser(user_id) : db;
       // 抽取质量优先:LLM 已配置则用 LLM,否则退回规则版(离线冒烟)
       const extractor = extractors.llm ?? extractors.heuristic;
       const transcript = composeTranscript(messages);
-      const result = await ingestRaw(db, provider, {
+      const result = await ingestRaw(targetDb, provider, {
         text: transcript,
         extractor,
         scope: { user: user_id },
@@ -170,7 +175,9 @@ async function handle(
     try {
       const body = (await readJsonBody(req)) as Record<string, unknown>;
       // 竞赛契约:user_id 是隔离边界,Search 用相同值;session_id 可选收敛范围
+      let reqDb = db;
       if (typeof body.user_id === 'string' && body.user_id.trim()) {
+        if (opts.router) reqDb = opts.router.forUser(body.user_id);
         const scope = (body.scope ?? {}) as Record<string, unknown>;
         scope.user = body.user_id;
         if (typeof body.session_id === 'string' && body.session_id) scope.session = body.session_id;
@@ -190,7 +197,7 @@ async function handle(
         delete body.options;
       }
       body.query = query;
-      const out = await search(db, provider, body);
+      const out = await search(reqDb, provider, body);
       return send(res, 200, {
         data: out.results.map(r => ({
           id: r.id,

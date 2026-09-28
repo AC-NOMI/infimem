@@ -8,6 +8,7 @@ export { forget, type ForgetResult } from './governance/forget.js';
 export { compact, type CompactOptions, type CompactReport } from './governance/compact.js';
 export { createInfimemServer, SERVER_INSTRUCTIONS } from './mcp/server.js';
 export { createHttpServer, startHttpServer, type HttpServerOptions } from './http/server.js';
+export { DbRouter, type DbRouterOptions } from './http/db-router.js';
 export { HeuristicExtractor } from './extract/heuristic.js';
 export { LlmExtractor, ExtractError } from './extract/llm.js';
 export { ingestRaw, type IngestRawOptions, type IngestRawResult } from './extract/ingest.js';

@@ -6,6 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { openDb } from '../db/connection.js';
 import { createInfimemServer } from '../mcp/server.js';
 import { startHttpServer } from '../http/server.js';
+import { DbRouter } from '../http/db-router.js';
 import { HeuristicExtractor } from '../extract/heuristic.js';
 import { LlmExtractor } from '../extract/llm.js';
 import { ingestRaw } from '../extract/ingest.js';
@@ -171,6 +172,7 @@ program
   .option('--port <n>', 'Port (default 8787)')
   .option('--host <h>', 'Bind address (default 127.0.0.1)')
   .option('--token <t>', 'Require bearer auth (default $INFIMEM_HTTP_TOKEN)')
+  .option('--shard-dir <dir>', 'Per-user_id SQLite shards (competition scale; disables single-db retrieval scope)')
   .action(async (opts) => {
     const provider = getProviderFromEnv();
     const db = openDb(h.resolveDbPath(opts.db), { dim: provider.dim });
@@ -178,8 +180,11 @@ program
       port: opts.port ? Number(opts.port) : undefined,
       host: opts.host,
       token: opts.token ?? process.env.INFIMEM_HTTP_TOKEN,
+      ...(opts.shardDir
+        ? { router: new DbRouter({ rootDir: opts.shardDir, provider }) }
+        : {}),
     });
-    console.log(`infimem HTTP server listening at ${url} (provider: ${provider.name}, dim: ${provider.dim})`);
+    console.log(`infimem HTTP server listening at ${url} (provider: ${provider.name}, dim: ${provider.dim}${opts.shardDir ? ', sharded' : ''})`);
     console.log('endpoints: GET /health · POST /add · POST /search');
   });
 
