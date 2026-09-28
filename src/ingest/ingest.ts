@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Db } from '../db/connection.js';
+import { getDbDim } from '../db/meta.js';
 import type { EmbeddingProvider } from '../embeddings/types.js';
 import { contentHash, autoCanonicalKey } from '../schema/keys.js';
 import { rememberInputSchema, scopeSchema, type RememberInput, type Scope } from '../schema/memory.js';
@@ -20,7 +21,12 @@ export interface RememberResult {
  * 校验 → 幂等 → canonical_key → 重复检测 → supersedes/冲突裁决 → 原子提交 → 审计。
  * embedding 在事务外计算:失败不拒绝写入,降级为 vec_pending。
  */
-export async function remember(db: Db, provider: EmbeddingProvider, input: unknown): Promise<RememberResult> {
+export async function remember(
+  db: Db,
+  provider: EmbeddingProvider,
+  input: unknown,
+  internal?: { vector?: Float32Array },
+): Promise<RememberResult> {
   const parsed = rememberInputSchema.safeParse(input);
   if (!parsed.success) {
     throw new ValidationError('invalid remember input', parsed.error.issues);
@@ -28,11 +34,16 @@ export async function remember(db: Db, provider: EmbeddingProvider, input: unkno
   const value: RememberInput = parsed.data;
   const scope: Scope = scopeSchema.parse(value.scope ?? {});
 
-  let vector: Float32Array | null = null;
-  try {
-    vector = await provider.embed([value.content, ...value.keywords].join('\n'));
-  } catch {
-    vector = null;
+  // 批量摄取路径:调用方已批量预计算向量时跳过单条 embed。
+  // 校验对象是数据库实际维度(而非 provider.dim):不符则降级 vec_pending,不重试 embed
+  let vector: Float32Array | null =
+    internal?.vector && internal.vector.length === getDbDim(db) ? internal.vector : null;
+  if (!vector && !internal?.vector) {
+    try {
+      vector = await provider.embed([value.content, ...value.keywords].join('\n'));
+    } catch {
+      vector = null;
+    }
   }
 
   const canonicalKey = value.canonicalKey?.trim() || autoCanonicalKey(value.type, value.content);

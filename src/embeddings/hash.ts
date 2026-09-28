@@ -23,6 +23,12 @@ export class HashEmbeddingProvider implements EmbeddingProvider {
     for (let i = 0; i < this.dim; i++) vec[i] /= norm;
     return vec;
   }
+
+  async embedMany(texts: string[]): Promise<Float32Array[]> {
+    const out: Float32Array[] = [];
+    for (const t of texts) out.push(await this.embed(t));
+    return out;
+  }
 }
 
 function extractFeatures(text: string): string[] {

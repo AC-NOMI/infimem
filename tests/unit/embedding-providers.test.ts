@@ -37,7 +37,7 @@ describe('OpenAIEmbeddingProvider(泛化后)', () => {
     const v = await p.embed('hello world');
     expect(captured!.url).toBe('https://example.com/v1/embeddings');
     expect(captured!.auth).toBe('Bearer k-test');
-    expect(captured!.body).toMatchObject({ model: 'm1', input: 'hello world', dimensions: 8 });
+    expect(captured!.body).toMatchObject({ model: 'm1', input: ['hello world'], dimensions: 8 });
     expect(v).toBeInstanceOf(Float32Array);
     expect(v.length).toBe(8);
   });
