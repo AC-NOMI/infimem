@@ -87,6 +87,21 @@ describe('LlmExtractor(gpt-4o-mini 适配器,mock fetch)', () => {
     expect(attempts).toBe(2); // 503 重试一次,再失败于解析
   });
 
+  it('sends enable_thinking:false only when thinking is explicitly disabled', async () => {
+    const bodies: any[] = [];
+    const mk = (opts: any) => new LlmExtractor({
+      ...opts,
+      fetchImpl: async (url: any, init: any) => {
+        bodies.push(JSON.parse(init.body));
+        return okResponse('{"memories":[]}');
+      },
+    });
+    await mk({ apiKey: 'k', thinking: false }).extract('t');
+    expect(bodies[0].enable_thinking).toBe(false);
+    await mk({ apiKey: 'k' }).extract('t');
+    expect('enable_thinking' in bodies[1]).toBe(false);
+  });
+
   it('extracts prose-wrapped JSON (substring fallback) and tolerates trailing commas', async () => {
     const ex = new LlmExtractor({
       apiKey: 'k',

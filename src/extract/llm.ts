@@ -36,6 +36,8 @@ export interface LlmExtractorOptions {
   retries?: number;
   /** 分块并发抽取数(默认 4;INFIMEM_LLM_CONCURRENCY 可调) */
   concurrency?: number;
+  /** 显式 false 时发送 enable_thinking:false 关闭 Qwen3 系思考;缺省跟随服务端默认 */
+  thinking?: boolean;
 }
 
 /** gpt-4o-mini(OpenAI 兼容端点)抽取器 —— 赛事 Add 场景的系统内抽取(D1 的可选增强路径) */
@@ -48,6 +50,7 @@ export class LlmExtractor implements Extractor {
   private readonly chunkSize: number;
   private readonly retries: number;
   private readonly concurrency: number;
+  private readonly suppressThinking: boolean;
 
   constructor(opts: LlmExtractorOptions = {}) {
     this.apiKey = opts.apiKey ?? process.env.INFIMEM_LLM_API_KEY ?? '';
@@ -60,6 +63,7 @@ export class LlmExtractor implements Extractor {
     if (!Number.isInteger(this.concurrency) || this.concurrency < 1) {
       throw new InfimemError(`concurrency must be an integer >= 1, got ${this.concurrency}`);
     }
+    this.suppressThinking = opts.thinking === false;
     if (!this.apiKey) throw new InfimemError('LlmExtractor requires an API key (INFIMEM_LLM_API_KEY)');
   }
 
@@ -101,6 +105,8 @@ export class LlmExtractor implements Extractor {
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: chunk },
             ],
+            // 只在显式关闭时发送:非 Qwen3 模型可能拒收未知参数(同 dimensions 教训)
+            ...(this.suppressThinking ? { enable_thinking: false } : {}),
           }),
         });
         if (!res.ok) throw new ExtractError(`llm http ${res.status}`);

@@ -42,8 +42,10 @@ const provider = embeddingKind === 'v4'
       })
     : new HashEmbeddingProvider();
 const MODEL = args.model ?? process.env.INFIMEM_LLM_MODEL ?? 'Qwen/Qwen2.5-7B-Instruct';
+const extractThinking = args['extract-thinking'] !== 'off';
+const answerThinking = args['answer-thinking'] !== 'off';
 const extractor = extractorKind === 'llm'
-  ? new LlmExtractor({ model: MODEL })
+  ? new LlmExtractor({ model: MODEL, ...(extractThinking ? {} : { thinking: false }) })
   : new HeuristicExtractor();
 let chat = null;
 if (args.answers) {
@@ -57,7 +59,7 @@ if (args.answers) {
         const res = await fetch(`${baseUrl}/chat/completions`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: MODEL, temperature: 0, messages }),
+          body: JSON.stringify({ model: MODEL, temperature: 0, messages, ...(answerThinking ? {} : { enable_thinking: false }) }),
         });
         if (res.status === 429) { await sleep(2000 * (attempt + 1)); continue; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -220,7 +222,8 @@ const report = {
 
 const outDir = join(root, 'eval', 'reports', 'locomo');
 const safe = (x) => x.replace(/[^A-Za-z0-9._-]/g, '_');
-const reportName = 'locomo-' + safe(extractor.name) + '-' + safe(MODEL) + '-' + safe(provider.name) + '-k' + K; // 含 LLM 模型名,防覆盖
+const tag = args.tag ? '-' + safe(String(args.tag)) : '';
+const reportName = 'locomo-' + safe(extractor.name) + '-' + safe(MODEL) + tag + '-' + safe(provider.name) + '-k' + K; // 含 LLM 模型名与标签,防覆盖
 mkdirSync(outDir, { recursive: true });
 writeFileSync(join(outDir, `${reportName}.json`), JSON.stringify({ ...report, perCase: perConv }, null, 2));
 const md = [
