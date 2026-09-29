@@ -219,6 +219,7 @@ const report = {
 
 const outDir = join(root, 'eval', 'reports', 'locomo');
 const safe = (x) => x.replace(/[^A-Za-z0-9._-]/g, '_');
+const reportName = 'locomo-' + safe(extractor.name) + '-' + safe(MODEL) + '-' + safe(provider.name) + '-k' + K; // 含 LLM 模型名,防覆盖
 mkdirSync(outDir, { recursive: true });
 writeFileSync(join(outDir, `locomo-${safe(extractor.name)}-${safe(provider.name)}-k${K}.json`), JSON.stringify({ ...report, perCase: perConv }, null, 2));
 const md = [
