@@ -176,6 +176,7 @@ for (const conv of dataset) {
     const answerWorker = async () => {
       while (next < pendingAnswers.length) {
         const e = pendingAnswers[next++];
+        if (e.answerRank % 25 === 0) console.error(`[answers] ${next}/${pendingAnswers.length}`);
         try {
           e.genAnswer = await chat([
             { role: 'system', content: 'Answer the question using ONLY the memories provided. If the memories do not contain the answer, reply exactly: no information. Reply in the same language as the question, as briefly as possible.' },
@@ -221,7 +222,7 @@ const outDir = join(root, 'eval', 'reports', 'locomo');
 const safe = (x) => x.replace(/[^A-Za-z0-9._-]/g, '_');
 const reportName = 'locomo-' + safe(extractor.name) + '-' + safe(MODEL) + '-' + safe(provider.name) + '-k' + K; // 含 LLM 模型名,防覆盖
 mkdirSync(outDir, { recursive: true });
-writeFileSync(join(outDir, `locomo-${safe(extractor.name)}-${safe(provider.name)}-k${K}.json`), JSON.stringify({ ...report, perCase: perConv }, null, 2));
+writeFileSync(join(outDir, `${reportName}.json`), JSON.stringify({ ...report, perCase: perConv }, null, 2));
 const md = [
   `# LoCoMo 检索级评测 — ${report.extractor} + ${report.provider} (k=${K})`,
   '',
@@ -237,6 +238,6 @@ const md = [
   `|---|---|---|---|`,
   ...Object.entries(report.byCategory).map(([l, v]) => `| ${l} | ${v.qas} | ${v.answerHitAtK.toFixed(3)} | ${v.evidenceRecallAtK === null ? 'n/a' : v.evidenceRecallAtK.toFixed(3)} |`),
 ].join('\n');
-writeFileSync(join(outDir, `locomo-${safe(extractor.name)}-${safe(provider.name)}-k${K}.md`), md);
+writeFileSync(join(outDir, `${reportName}.md`), md);
 console.log(md);
 console.log(`\nreport → eval/reports/locomo/locomo-${safe(extractor.name)}-${safe(provider.name)}-k${K}.{json,md}`);
