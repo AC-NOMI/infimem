@@ -23,6 +23,9 @@ POSITIONING.md
 # Internal competition plan stays local
 COMPETITION.md
 
+# LoCoMo dataset (downloaded, not committed)
+eval/locomo/data/
+
 # Eval run outputs (baseline + release reports are tracked)
 eval/reports/latest/
 
