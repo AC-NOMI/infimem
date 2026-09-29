@@ -63,18 +63,28 @@ export class LlmExtractor implements Extractor {
     if (!this.apiKey) throw new InfimemError('LlmExtractor requires an API key (INFIMEM_LLM_API_KEY)');
   }
 
+  /** 最近一次 extract() 中失败被跳过的分块数(7B 级模型 JSON 依从性差,属常态) */
+  failedChunks = 0;
+
   async extract(text: string): Promise<ExtractedMemory[]> {
     const chunks = chunkText(text, this.chunkSize);
-    const results = new Array<ExtractedMemory[]>(chunks.length);
+    const results = new Array<ExtractedMemory[] | null>(chunks.length).fill(null);
+    this.failedChunks = 0;
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < chunks.length) {
         const idx = next++;
-        results[idx] = await this.extractChunk(chunks[idx]!);
+        try {
+          results[idx] = await this.extractChunk(chunks[idx]!);
+        } catch (e) {
+          // 单块失败隔离:跳过该块,不炸整批(小模型输出抖动是常态)
+          this.failedChunks++;
+          console.warn(`[llm-extract] chunk ${idx} failed: ${e instanceof Error ? e.message : e}`);
+        }
       }
     };
     await Promise.all(Array.from({ length: Math.min(this.concurrency, chunks.length) }, worker));
-    return results.flat(); // 按 chunk 原顺序拼接,与完成顺序无关
+    return results.filter((r): r is ExtractedMemory[] => r !== null).flat(); // 按 chunk 原顺序拼接
   }
 
   private async extractChunk(chunk: string): Promise<ExtractedMemory[]> {
@@ -105,15 +115,26 @@ export class LlmExtractor implements Extractor {
   }
 }
 
+function tryParseJson(s: string): unknown {
+  try {
+    return JSON.parse(s.replace(/,\s*([}\]])/g, '$1')); // 容忍尾逗号
+  } catch {
+    return undefined;
+  }
+}
+
 function parseLlmMemories(content: string): ExtractedMemory[] {
   const cleaned = content
     .replace(/^```(?:json)?\s*/gm, '')
     .replace(/```\s*/g, '')
     .trim();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
+  let parsed = tryParseJson(cleaned);
+  if (parsed === undefined) {
+    // 小模型常见:JSON 前后有解说文字 —— 抽取第一个 { 到最后一个 } 再试
+    const m = cleaned.match(/\{[\s\S]*\}/);
+    if (m) parsed = tryParseJson(m[0]);
+  }
+  if (parsed === undefined) {
     throw new ExtractError('llm output is not valid JSON');
   }
   const r = outputSchema.safeParse(parsed);

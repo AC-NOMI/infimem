@@ -17,6 +17,8 @@ export interface OpenAIEmbeddingProviderOptions {
   fetchImpl?: typeof fetch;
   /** embedMany 单次请求的最大文本数(DashScope text-embedding-v4 上限 10) */
   batchSize?: number;
+  /** 是否发送 dimensions 参数;固定维度模型(如 SiliconFlow bge-m3)会拒绝该参数,需设 false */
+  sendDimensions?: boolean;
 }
 
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
@@ -28,6 +30,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   private readonly dimRange: [number, number];
   private readonly fetchImpl: typeof fetch;
   private readonly batchSize: number;
+  private readonly sendDimensions: boolean;
 
   constructor(opts: OpenAIEmbeddingProviderOptions = {}) {
     this.name = opts.name ?? 'openai';
@@ -38,6 +41,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     this.dimRange = opts.dimRange ?? [512, 3072];
     this.fetchImpl = opts.fetchImpl ?? ((url, init) => fetch(url, init));
     this.batchSize = opts.batchSize ?? 10;
+    this.sendDimensions = opts.sendDimensions ?? process.env.INFIMEM_OPENAI_NO_DIMENSIONS !== '1';
     if (!this.apiKey) throw new InfimemError('OpenAIEmbeddingProvider requires an API key');
     const [min, max] = this.dimRange;
     if (!Number.isInteger(this.dim) || this.dim < min || this.dim > max) {
@@ -63,7 +67,11 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
       res = await this.fetchImpl(this.endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
-        body: JSON.stringify({ model: this.model, input: inputs, dimensions: this.dim }),
+        body: JSON.stringify({
+          model: this.model,
+          input: inputs,
+          ...(this.sendDimensions ? { dimensions: this.dim } : {}),
+        }),
       });
     } catch (e) {
       throw new InfimemError(`embedding request failed: ${e instanceof Error ? e.message : String(e)}`);

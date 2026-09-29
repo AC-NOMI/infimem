@@ -22,15 +22,62 @@ const { OpenAIEmbeddingProvider } = await import(join(root, 'dist', 'embeddings'
 const dataPath = args.data ?? join(root, 'eval', 'locomo', 'data', 'locomo10.json');
 const K = Number(args.k ?? 5);
 const LIMIT = args.limit ? Number(args.limit) : 10;
+// --answers 启用 LLM 答题;建议先 --limit 1 小样本验证再全量
 const extractorKind = args.extractor ?? 'heuristic';
 const embeddingKind = args.embedding ?? 'hash';
 
 const provider = embeddingKind === 'v4'
   ? new OpenAIEmbeddingProvider({ name: 'text-embedding-v4' })
-  : new HashEmbeddingProvider();
+  : embeddingKind === 'openai'
+    ? new OpenAIEmbeddingProvider({
+        name: process.env.INFIMEM_OPENAI_MODEL ?? 'BAAI/bge-m3',
+        apiKey: process.env.INFIMEM_OPENAI_API_KEY,
+        model: process.env.INFIMEM_OPENAI_MODEL ?? 'BAAI/bge-m3',
+        endpoint: process.env.INFIMEM_OPENAI_BASE_URL ?? 'https://api.siliconflow.cn/v1/embeddings',
+        dim: Number(process.env.INFIMEM_EMBEDDING_DIM ?? process.env.INFIMEM_OPENAI_DIM ?? 1024),
+        dimRange: [1, 4096],
+        // bge-m3 为固定维度模型,拒绝 dimensions 参数:默认不发送,除非显式置 0
+        sendDimensions: process.env.INFIMEM_OPENAI_NO_DIMENSIONS === '0', // bge-m3 拒收 dimensions,默认不发送
+        batchSize: Number(process.env.INFIMEM_EMBEDDING_BATCH ?? 10),
+      })
+    : new HashEmbeddingProvider();
+const MODEL = args.model ?? process.env.INFIMEM_LLM_MODEL ?? 'Qwen/Qwen2.5-7B-Instruct';
 const extractor = extractorKind === 'llm'
-  ? new LlmExtractor({ model: 'gpt-4o-mini' })
+  ? new LlmExtractor({ model: MODEL })
   : new HeuristicExtractor();
+let chat = null;
+if (args.answers) {
+  const baseUrl = process.env.INFIMEM_LLM_BASE_URL ?? 'https://api.siliconflow.cn/v1';
+  const apiKey = process.env.INFIMEM_LLM_API_KEY;
+  if (!apiKey) throw new Error('--answers 需要 INFIMEM_LLM_API_KEY');
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  chat = async (messages) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({ model: MODEL, temperature: 0, messages }),
+        });
+        if (res.status === 429) { await sleep(2000 * (attempt + 1)); continue; }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        return (data.choices?.[0]?.message?.content ?? '').trim();
+      } catch (e) {
+        if (attempt === 2) throw e;
+        await sleep(1000);
+      }
+    }
+  };
+}
+const f1 = (pred, gold) => {
+  const P = new Set(norm(pred).split(' ').filter(Boolean));
+  const G = new Set(norm(gold).split(' ').filter(Boolean));
+  if (P.size === 0 || G.size === 0) return 0;
+  const overlap = [...P].filter(t => G.has(t)).length;
+  const precision = overlap / P.size, recall = overlap / G.size;
+  return precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
+};
 
 const norm = (s) => (s.toLowerCase().match(/[a-z0-9]+|[\u4e00-\u9fff]/g) ?? []).join(' ');
 const parseDT = (s) => {
@@ -82,6 +129,7 @@ for (const conv of dataset) {
   const memCount = (db.prepare('SELECT count(*) c FROM memories').get()).c;
   totalMemories += memCount;
 
+  const pendingAnswers = [];
   for (const qa of conv.qa) {
     const cat = Number(qa.category);
     const out = await search(db, provider, { query: qa.question, k: K, scope: { user: `locomo:${sampleId}` } });
@@ -109,13 +157,37 @@ for (const conv of dataset) {
         if (hit) covered++;
       }
     }
-    perConv.push({
+    const entry = {
       sample_id: sampleId, category: cat, question: qa.question, answer: String(qa.answer ?? ''),
       answerHit: hitRank > 0, answerRank: hitRank,
       evidenceTotal: evTexts.length, evidenceCovered: covered,
       evidenceRecall: evTexts.length > 0 ? covered / evTexts.length : null,
       memories: memCount,
-    });
+    };
+    if (chat) {
+      entry._top = out.results.slice(0, 5).map((r, i) => `${i + 1}. ${r.content}`).join('\n');
+      pendingAnswers.push(entry);
+    }
+    perConv.push(entry);
+  }
+  // 答题并发化:检索(本地)全部完成后,LLM 答题用 worker pool 并发
+  if (chat && pendingAnswers.length > 0) {
+    let next = 0;
+    const answerWorker = async () => {
+      while (next < pendingAnswers.length) {
+        const e = pendingAnswers[next++];
+        try {
+          e.genAnswer = await chat([
+            { role: 'system', content: 'Answer the question using ONLY the memories provided. If the memories do not contain the answer, reply exactly: no information. Reply in the same language as the question, as briefly as possible.' },
+            { role: 'user', content: `Memories:\n${e._top}\n\nQuestion: ${e.question}` },
+          ]);
+          e.genF1 = f1(e.genAnswer, e.answer);
+        } catch (err) {
+          console.error(`[answer-fail] ${e.question.slice(0, 40)}: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, answerWorker)); // 并发 6,免费档限速内
   }
   console.error(`[${sampleId}] turns-sessions=${sessions.length} memories=${memCount} qa=${conv.qa.length}`);
   db.close();
@@ -132,6 +204,7 @@ const report = {
   qasScored: scored.length,
   answerHitAtK: mean(scored.map(p => (p.answerHit ? 1 : 0))),
   mrr,
+  answerF1: (() => { const fs = perConv.filter(p => p.genF1 !== null && p.genF1 !== undefined).map(p => p.genF1); return fs.length ? mean(fs) : null; })(),
   evidenceRecallAtK: mean(scored.map(p => p.evidenceRecall ?? 0).filter((_, i) => scored[i].evidenceTotal > 0)),
   byCategory: Object.fromEntries(Object.entries(CATEGORY_LABELS).map(([cat, label]) => {
     const rows = perConv.filter(p => p.category === Number(cat) && p.evidenceTotal > 0);
@@ -145,8 +218,9 @@ const report = {
 };
 
 const outDir = join(root, 'eval', 'reports', 'locomo');
+const safe = (x) => x.replace(/[^A-Za-z0-9._-]/g, '_');
 mkdirSync(outDir, { recursive: true });
-writeFileSync(join(outDir, `locomo-${extractor.name}-${provider.name}-k${K}.json`), JSON.stringify({ ...report, perCase: perConv }, null, 2));
+writeFileSync(join(outDir, `locomo-${safe(extractor.name)}-${safe(provider.name)}-k${K}.json`), JSON.stringify({ ...report, perCase: perConv }, null, 2));
 const md = [
   `# LoCoMo 检索级评测 — ${report.extractor} + ${report.provider} (k=${K})`,
   '',
@@ -155,12 +229,13 @@ const md = [
   `| 指标 | 值 |`, `|---|---|`,
   `| Answer-hit@${K} | ${report.answerHitAtK.toFixed(3)} |`,
   `| MRR | ${report.mrr.toFixed(3)} |`,
+  `| Answer F1(LLM 答题) | ${report.answerF1 === null ? 'n/a' : report.answerF1.toFixed(3)} |`,
   `| Evidence-recall@${K} | ${report.evidenceRecallAtK.toFixed(3)} |`,
   '',
   `| 类别 | QA | Answer-hit@${K} | Evidence-recall@${K} |`,
   `|---|---|---|---|`,
   ...Object.entries(report.byCategory).map(([l, v]) => `| ${l} | ${v.qas} | ${v.answerHitAtK.toFixed(3)} | ${v.evidenceRecallAtK === null ? 'n/a' : v.evidenceRecallAtK.toFixed(3)} |`),
 ].join('\n');
-writeFileSync(join(outDir, `locomo-${extractor.name}-${provider.name}-k${K}.md`), md);
+writeFileSync(join(outDir, `locomo-${safe(extractor.name)}-${safe(provider.name)}-k${K}.md`), md);
 console.log(md);
-console.log(`\nreport → eval/reports/locomo/locomo-${extractor.name}-${provider.name}-k${K}.{json,md}`);
+console.log(`\nreport → eval/reports/locomo/locomo-${safe(extractor.name)}-${safe(provider.name)}-k${K}.{json,md}`);

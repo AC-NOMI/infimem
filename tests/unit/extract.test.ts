@@ -71,7 +71,7 @@ describe('LlmExtractor(gpt-4o-mini 适配器,mock fetch)', () => {
     expect(out[0]).toMatchObject({ content: 'x', type: 'fact' });
   });
 
-  it('throws ExtractError on unparseable output, with one transient retry', async () => {
+  it('returns partial results when a chunk stays unparseable after retry', async () => {
     let attempts = 0;
     const flaky = new LlmExtractor({
       apiKey: 'k',
@@ -81,8 +81,37 @@ describe('LlmExtractor(gpt-4o-mini 适配器,mock fetch)', () => {
         return okResponse('not json at all');
       },
     });
-    await expect(flaky.extract('t')).rejects.toBeInstanceOf(ExtractError);
+    const out = await flaky.extract('t');
+    expect(out).toEqual([]); // 单块失败不炸整批
+    expect(flaky.failedChunks).toBe(1);
     expect(attempts).toBe(2); // 503 重试一次,再失败于解析
+  });
+
+  it('extracts prose-wrapped JSON (substring fallback) and tolerates trailing commas', async () => {
+    const ex = new LlmExtractor({
+      apiKey: 'k',
+      fetchImpl: async () => okResponse('好的,以下是结果:\n{"memories":[{"content":"x","type":"fact",}]}'),
+    });
+    const out = await ex.extract('t');
+    expect(out).toEqual([{ content: 'x', type: 'fact', keywords: [] }]);
+  });
+
+  it('isolates a failed chunk and continues with the rest', async () => {
+    const fetchImpl = (async (url: any, init: any) => {
+      const chunk: string = JSON.parse(init.body).messages.at(-1).content;
+      const bad = chunk === 'bbbbbbbbbb';
+      return {
+        ok: true,
+        status: 200,
+        json: async () => bad
+          ? { choices: [{ message: { content: 'garbage not json' } }] }
+          : { choices: [{ message: { content: JSON.stringify({ memories: [{ content: `mem:${chunk[0]}`, type: 'fact' }] }) } }] },
+      };
+    }) as typeof fetch;
+    const ex = new LlmExtractor({ apiKey: 'k', chunkSize: 10, concurrency: 1, retries: 0, fetchImpl });
+    const out = await ex.extract('aaaaaaaaaabbbbbbbbbbcccccccccc');
+    expect(out.map(m => m.content)).toEqual(['mem:a', 'mem:c']);
+    expect(ex.failedChunks).toBe(1);
   });
 
   it('extracts chunks concurrently while preserving chunk order in output', async () => {
