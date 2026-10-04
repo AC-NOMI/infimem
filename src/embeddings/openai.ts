@@ -62,37 +62,55 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   }
 
   private async requestEmbeddings(inputs: string[]): Promise<Float32Array[]> {
-    let res: Response;
-    try {
-      res = await this.fetchImpl(this.endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
-        body: JSON.stringify({
-          model: this.model,
-          input: inputs,
-          ...(this.sendDimensions ? { dimensions: this.dim } : {}),
-        }),
-      });
-    } catch (e) {
-      throw new InfimemError(`embedding request failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
-    if (!res.ok) {
-      throw new InfimemError(`embedding request failed: HTTP ${res.status}`);
-    }
-    const data = (await res.json()) as { data?: { index?: number; embedding: number[] }[] };
-    const rows = data.data ?? [];
-    if (rows.length !== inputs.length) {
-      throw new InfimemError(`embedding endpoint returned ${rows.length} vectors for ${inputs.length} inputs`);
-    }
-    // 按 index 排序(若端点提供),否则按返回位置
-    const ordered = rows
-      .map((r, i) => ({ i: r.index ?? i, embedding: r.embedding }))
-      .sort((a, b) => a.i - b.i);
-    return ordered.map(({ embedding }) => {
-      if (!embedding || embedding.length !== this.dim) {
-        throw new InfimemError(`embedding endpoint returned ${embedding?.length ?? 0} dims, expected ${this.dim}`);
+    let lastError: unknown;
+    // 网络错误/429/5xx 重试(瞬时抖动不该炸掉整个检索);4xx 业务错误立即抛出
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      try {
+        const res = await this.fetchImpl(this.endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
+          body: JSON.stringify({
+            model: this.model,
+            input: inputs,
+            ...(this.sendDimensions ? { dimensions: this.dim } : {}),
+          }),
+        });
+        if (res.status === 429 || res.status >= 500) {
+          lastError = new InfimemError(`embedding request failed: HTTP ${res.status}`);
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+            continue;
+          }
+          throw lastError;
+        }
+        if (!res.ok) {
+          throw new InfimemError(`embedding request failed: HTTP ${res.status}`);
+        }
+        const data = (await res.json()) as { data?: { index?: number; embedding: number[] }[] };
+        const rows = data.data ?? [];
+        if (rows.length !== inputs.length) {
+          throw new InfimemError(`embedding endpoint returned ${rows.length} vectors for ${inputs.length} inputs`);
+        }
+        // 按 index 排序(若端点提供),否则按返回位置
+        const ordered = rows
+          .map((r, i) => ({ i: r.index ?? i, embedding: r.embedding }))
+          .sort((a, b) => a.i - b.i);
+        return ordered.map(({ embedding }) => {
+          if (!embedding || embedding.length !== this.dim) {
+            throw new InfimemError(`embedding endpoint returned ${embedding?.length ?? 0} dims, expected ${this.dim}`);
+          }
+          return new Float32Array(embedding);
+        });
+      } catch (e) {
+        lastError = e;
+        // InfimemError = 已判定的 HTTP/业务错误,不重试;其余(fetch 网络错误)退避重试
+        if (e instanceof InfimemError) throw e;
+        if (attempt >= 2) {
+          throw new InfimemError(`embedding request failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
       }
-      return new Float32Array(embedding);
-    });
+    }
+    throw lastError instanceof InfimemError ? lastError : new InfimemError('embedding request failed');
   }
 }
