@@ -109,7 +109,15 @@ export class LlmExtractor implements Extractor {
             ...(this.suppressThinking ? { enable_thinking: false } : {}),
           }),
         });
-        if (!res.ok) throw new ExtractError(`llm http ${res.status}`);
+        if (!res.ok) {
+          if (res.status === 429 || res.status >= 500) {
+            const wait = 2000 * (attempt + 1);
+            console.warn(`[llm-extract] ${res.status} rate/服务繁忙,${wait}ms 后重试 (${attempt + 1}/${this.retries + 1}) ${new Date().toISOString()}`);
+            await new Promise(r => setTimeout(r, wait));
+            continue;
+          }
+          throw new ExtractError(`llm http ${res.status}`);
+        }
         const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
         return parseLlmMemories(data.choices?.[0]?.message?.content ?? '');
       } catch (e) {

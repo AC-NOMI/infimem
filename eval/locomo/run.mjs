@@ -61,7 +61,12 @@ if (args.answers) {
           headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({ model: MODEL, temperature: 0, messages, ...(answerThinking ? {} : { enable_thinking: false }) }),
         });
-        if (res.status === 429) { await sleep(2000 * (attempt + 1)); continue; }
+        if (res.status === 429) {
+          const wait = 3000 * (attempt + 1);
+          console.error(`[answer] 429 限速,${wait}ms 后重试 (${attempt + 1}/3) ${new Date().toISOString()}`);
+          await sleep(wait);
+          continue;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         return (data.choices?.[0]?.message?.content ?? '').trim();
