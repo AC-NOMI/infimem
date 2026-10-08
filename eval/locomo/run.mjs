@@ -134,6 +134,8 @@ for (const conv of dataset) {
   }
 
   const memCount = (db.prepare('SELECT count(*) c FROM memories').get()).c;
+  // store-recall 的底:本对话全部记忆的归一化文本(一次取回)
+  const storeNorms = db.prepare('SELECT content FROM memories').all().map(r => norm(r.content));
   totalMemories += memCount;
 
   const pendingAnswers = [];
@@ -164,9 +166,12 @@ for (const conv of dataset) {
         if (hit) covered++;
       }
     }
+    // store-recall:金标答案是否存在于记忆库(k=∞ 口径的上限;LLM 抽取改写会低估)
+    const storeHit = answerNorm.length >= 3 && storeNorms.some(c => c.includes(answerNorm));
     const entry = {
       sample_id: sampleId, category: cat, question: qa.question, answer: String(qa.answer ?? ''),
       answerHit: hitRank > 0, answerRank: hitRank,
+      storeHit,
       evidenceTotal: evTexts.length, evidenceCovered: covered,
       evidenceRecall: evTexts.length > 0 ? covered / evTexts.length : null,
       memories: memCount,
@@ -211,6 +216,7 @@ const report = {
   memoriesPerConversation: Math.round(totalMemories / dataset.length),
   qasScored: scored.length,
   answerHitAtK: mean(scored.map(p => (p.answerHit ? 1 : 0))),
+  storeRecall: mean(scored.map(p => (p.storeHit ? 1 : 0))),
   mrr,
   answerF1: (() => { const fs = perConv.filter(p => p.genF1 !== null && p.genF1 !== undefined).map(p => p.genF1); return fs.length ? mean(fs) : null; })(),
   evidenceRecallAtK: mean(scored.map(p => p.evidenceRecall ?? 0).filter((_, i) => scored[i].evidenceTotal > 0)),
@@ -238,6 +244,7 @@ const md = [
   '',
   `| 指标 | 值 |`, `|---|---|`,
   `| Answer-hit@${K} | ${report.answerHitAtK.toFixed(3)} |`,
+  `| Store-recall(答案在库率) | ${report.storeRecall.toFixed(3)} |`,
   `| MRR | ${report.mrr.toFixed(3)} |`,
   `| Answer F1(LLM 答题) | ${report.answerF1 === null ? 'n/a' : report.answerF1.toFixed(3)} |`,
   `| Evidence-recall@${K} | ${report.evidenceRecallAtK.toFixed(3)} |`,

@@ -22,6 +22,7 @@ const SYSTEM_PROMPT = [
   'You extract long-term memories for an AI agent memory engine.',
   'From the given text, extract atomic, self-contained memory items.',
   'Types: fact (information), preference (likes/dislikes/choices), event (happening, often with time), procedure (how-to / steps).',
+  'CRITICAL - PRESERVE EXACT VALUES: copy dates, times, numbers, quantities, prices, ages, names, and places VERBATIM from the source (e.g. "7 May 2023", "three kids", "200 dollars"). Never round, translate, or omit them. A memory that loses its exact values is useless.',
   'Merge duplicates; keep the original language; drop trivia and filler.',
   'Return STRICT JSON only, no commentary, in the shape:',
   '{"memories":[{"content":"...","type":"fact|preference|event|procedure","keywords":["..."],"confidence":0.0}]}',

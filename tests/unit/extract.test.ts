@@ -87,6 +87,21 @@ describe('LlmExtractor(gpt-4o-mini 适配器,mock fetch)', () => {
     expect(attempts).toBe(2); // 503 重试一次,再失败于解析
   });
 
+  it('system prompt mandates verbatim preservation of dates and numbers', async () => {
+    let sysPrompt = '';
+    const ex = new LlmExtractor({
+      apiKey: 'k',
+      fetchImpl: async (url: any, init: any) => {
+        const msgs = JSON.parse(init.body).messages;
+        sysPrompt = msgs.find((m: any) => m.role === 'system').content;
+        return okResponse('{"memories":[]}');
+      },
+    });
+    await ex.extract('t');
+    expect(sysPrompt).toMatch(/VERBATIM/i);
+    expect(sysPrompt).toMatch(/dates, times, numbers/i);
+  });
+
   it('sends enable_thinking:false only when thinking is explicitly disabled', async () => {
     const bodies: any[] = [];
     const mk = (opts: any) => new LlmExtractor({
